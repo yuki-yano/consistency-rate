@@ -1,0 +1,16 @@
+# prod
+dist/
+
+# deps
+node_modules/
+.wrangler
+
+# env
+.env
+.env.production
+.dev.vars
+
+# logs
+logs/
+*.log
+pnpm-debug.log*
