@@ -26,13 +26,13 @@ import {
 } from "@chakra-ui/react"
 import { Select } from "chakra-react-select"
 import { useAtom } from "jotai"
-import { useEffect, useState, type FC } from "react"
+import { type FC, useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
 import { LuCheckCircle2, LuCircle } from "react-icons/lu"
 import { VscArrowCircleDown, VscArrowCircleUp, VscClose, VscCopy } from "react-icons/vsc"
 import { sprintf } from "sprintf-js"
 import { v4 as uuidv4 } from "uuid"
-import { theme } from "./theme"
+
 import {
   type CardData,
   cardsAtom,
@@ -47,10 +47,11 @@ import {
   type PatternMode,
   type PatternState,
 } from "./state"
+import { theme } from "./theme"
 
 type CalculationResult = {
-  overallProbability: string
   labelSuccessRates: { [label: string]: string }
+  overallProbability: string
   patternSuccessRates: { [patternId: string]: string }
 }
 
@@ -68,10 +69,9 @@ const App: FC = () => {
   const [pattern, setPattern] = useAtom(patternAtom)
   const [labels, setLabels] = useAtom(labelAtom)
   const [trials, setTrials] = useState<number>(100000)
-  const { onCopy, value: shortUrl, setValue: setShortUrl, hasCopied } = useClipboard("")
+  const { hasCopied, onCopy, setValue: setShortUrl, value: shortUrl } = useClipboard("")
   const [loadingShortUrl, setLoadingShortUrl] = useState(false)
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
   useEffect(() => {
     setPattern({
       patterns: pattern.patterns.map((p) => ({ ...p, expanded: false })),
@@ -80,13 +80,14 @@ const App: FC = () => {
     if (pattern.patterns.length !== 0) {
       setCalculationResult(calculateProbability(deck, card, pattern, trials))
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const [calculationResult, setCalculationResult] = useState<CalculationResult | null>(null)
 
   return (
     <Container maxW="container.xl">
-      <Heading as="h1" size="lg" py={4}>
+      <Heading as="h1" py={4} size="lg">
         <Link href="/">初動率計算機</Link>
       </Heading>
       <Box my={4}>
@@ -103,65 +104,65 @@ const App: FC = () => {
 
       <Flex gap={1} my={4}>
         <Button
+          disabled={loadingShortUrl}
           onClick={async () => {
             setLoadingShortUrl(true)
             const shortUrl = await fetchShortUrl(location.href)
             setShortUrl(shortUrl)
             setLoadingShortUrl(false)
           }}
-          disabled={loadingShortUrl}
         >
           短縮URLを生成
         </Button>
 
         <Input
-          placeholder="短縮URL"
-          value={shortUrl}
+          maxW="150px"
           onChange={(e) => {
             setShortUrl(e.target.value)
           }}
-          maxW="150px"
+          placeholder="短縮URL"
           readOnly
+          value={shortUrl}
         />
 
-        <Button onClick={onCopy} disabled={loadingShortUrl || shortUrl === ""}>
+        <Button disabled={loadingShortUrl || shortUrl === ""} onClick={onCopy}>
           {hasCopied ? "Copied!" : "Copy"}
         </Button>
       </Flex>
 
       <Grid gap={4} templateColumns="repeat(auto-fill, minmax(300px, 1fr))">
-        <Deck deck={deck} setDeck={setDeck} trials={trials} setTrials={setTrials} />
+        <Deck deck={deck} setDeck={setDeck} setTrials={setTrials} trials={trials} />
 
         {calculationResult != null && (
-          <SuccessRates calculationResult={calculationResult} pattern={pattern} labels={labels} />
+          <SuccessRates calculationResult={calculationResult} labels={labels} pattern={pattern} />
         )}
       </Grid>
 
       <Divider my={4} />
 
-      <CardList cards={card.cards} setCard={setCard} patterns={pattern.patterns} setPattern={setPattern} />
+      <CardList cards={card.cards} patterns={pattern.patterns} setCard={setCard} setPattern={setPattern} />
 
       <Divider my={4} />
 
       <LabelManagement
         labels={labels.labels}
-        setLabels={setLabels}
         patterns={pattern.patterns}
+        setLabels={setLabels}
         setPatterns={setPattern}
       />
 
       <Divider my={4} />
 
-      <PatternList cards={card.cards} patterns={pattern.patterns} setPattern={setPattern} labels={labels.labels} />
+      <PatternList cards={card.cards} labels={labels.labels} patterns={pattern.patterns} setPattern={setPattern} />
     </Container>
   )
 }
 
 const SuccessRates: FC<{
   calculationResult: CalculationResult
-  pattern: PatternState
   labels: LabelState
-}> = ({ calculationResult, pattern, labels }) => {
+  pattern: PatternState
+}> = ({ calculationResult, labels, pattern }) => {
   return (
     <>
       <Card>
@@ -213,9 +214,9 @@ const SuccessRates: FC<{
 const Deck: FC<{
   deck: DeckState
   setDeck: (deck: DeckState) => void
-  trials: number
   setTrials: (trials: number) => void
-}> = ({ deck, setDeck, trials, setTrials }) => {
+  trials: number
+}> = ({ deck, setDeck, setTrials, trials }) => {
   return (
     <Card>
       <CardBody>
@@ -227,10 +228,10 @@ const Deck: FC<{
           <FormControl>
             <FormLabel>枚数</FormLabel>
             <Input
-              type="text"
+              onChange={(e) => setDeck({ ...deck, cardCount: Number(e.target.value) })}
               placeholder="40"
+              type="text"
               value={deck.cardCount.toString()}
-              onChange={(e) => setDeck({ ...deck, cardCount: Number(e.target.value) ?? 0 })}
             />
           </FormControl>
         </Box>
@@ -239,10 +240,10 @@ const Deck: FC<{
           <FormControl>
             <FormLabel>初手枚数</FormLabel>
             <Input
+              onChange={(e) => setDeck({ ...deck, firstHand: Number(e.target.value) })}
+              placeholder="5"
               type="text"
               value={deck.firstHand.toString()}
-              placeholder="5"
-              onChange={(e) => setDeck({ ...deck, firstHand: Number(e.target.value) ?? 0 })}
             />
           </FormControl>
         </Box>
@@ -251,10 +252,8 @@ const Deck: FC<{
           <FormControl>
             <FormLabel>試行回数</FormLabel>
             <Input
-              value={trials.toString()}
-              type="text"
               onChange={(e) => {
-                const input = Number(e.target.value) ?? 100000
+                const input = Number(e.target.value)
 
                 if (input > 1000000) {
                   setTrials(1000000)
@@ -262,6 +261,8 @@ const Deck: FC<{
                   setTrials(input)
                 }
               }}
+              type="text"
+              value={trials.toString()}
             />
           </FormControl>
         </Box>
@@ -272,10 +273,10 @@ const Deck: FC<{
 
 const CardList: FC<{
   cards: Array<CardData>
-  setCard: (cards: CardsState) => void
   patterns: Array<Pattern>
+  setCard: (cards: CardsState) => void
   setPattern: (patterns: PatternState) => void
-}> = ({ cards, setCard, patterns, setPattern }) => {
+}> = ({ cards, patterns, setCard, setPattern }) => {
   const handleDeleteCard = (uid: string) => {
     const newCards = cards.filter((c) => c.uid !== uid)
     setCard({ cards: newCards })
@@ -324,8 +325,8 @@ const CardList: FC<{
         mb={4}
         onClick={() => {
           const newCards = cards.concat({
-            name: "",
             count: 1,
+            name: "",
             uid: uuidv4(),
           })
           setCard({ cards: newCards })
@@ -337,12 +338,12 @@ const CardList: FC<{
       <Grid gap={4} templateColumns="repeat(auto-fill, minmax(300px, 1fr))">
         {cards.map((card, index) => (
           <CardItem
-            key={card.uid}
             card={card}
-            index={index}
             handleDeleteCard={handleDeleteCard}
-            moveCardUp={moveCardUp}
+            index={index}
+            key={card.uid}
             moveCardDown={moveCardDown}
+            moveCardUp={moveCardUp}
             updateCard={updateCard}
           />
         ))}
@@ -353,34 +354,34 @@ const CardList: FC<{
 
 const CardItem: FC<{
   card: CardData
-  index: number
   handleDeleteCard: (uid: string) => void
-  moveCardUp: (index: number) => void
+  index: number
   moveCardDown: (index: number) => void
+  moveCardUp: (index: number) => void
   updateCard: (updatedCard: CardData) => void
-}> = ({ card, index, handleDeleteCard, moveCardUp, moveCardDown, updateCard }) => {
+}> = ({ card, handleDeleteCard, index, moveCardDown, moveCardUp, updateCard }) => {
   const [tmpName, setTempName] = useState(card.name)
 
   return (
     <Card key={card.uid} py={2}>
       <CardBody>
         <Flex gap={3} mb={2}>
-          <Icon as={VscClose} onClick={() => handleDeleteCard(card.uid)} fontSize="xl" color="gray.600" />
-          <Icon as={VscArrowCircleUp} onClick={() => moveCardUp(index)} fontSize="xl" color="gray.600" />
-          <Icon as={VscArrowCircleDown} onClick={() => moveCardDown(index)} fontSize="xl" color="gray.600" />
+          <Icon as={VscClose} color="gray.600" fontSize="xl" onClick={() => handleDeleteCard(card.uid)} />
+          <Icon as={VscArrowCircleUp} color="gray.600" fontSize="xl" onClick={() => moveCardUp(index)} />
+          <Icon as={VscArrowCircleDown} color="gray.600" fontSize="xl" onClick={() => moveCardDown(index)} />
         </Flex>
 
         <Box py={2}>
           <FormControl>
             <FormLabel>カード名</FormLabel>
             <Input
-              type="text"
-              value={tmpName}
-              placeholder="カード名"
-              onChange={(e) => setTempName(e.target.value)}
               onBlur={() => {
                 updateCard({ ...card, name: tmpName })
               }}
+              onChange={(e) => setTempName(e.target.value)}
+              placeholder="カード名"
+              type="text"
+              value={tmpName}
             />
           </FormControl>
         </Box>
@@ -388,12 +389,12 @@ const CardItem: FC<{
           <FormControl>
             <FormLabel>枚数</FormLabel>
             <Input
+              onChange={(e) => {
+                updateCard({ ...card, count: Number(e.target.value) })
+              }}
+              placeholder="枚数"
               type="number"
               value={card.count.toString()}
-              placeholder="枚数"
-              onChange={(e) => {
-                updateCard({ ...card, count: Number(e.target.value) ?? 1 })
-              }}
             />
           </FormControl>
         </Box>
@@ -403,35 +404,35 @@ const CardItem: FC<{
 }
 
 const ConditionInput: FC<{
-  condition: Condition
   cards: Array<CardData>
+  condition: Condition
   onChange: (condition: Condition) => void
   onDelete: () => void
-}> = ({ condition, cards, onChange, onDelete }) => {
+}> = ({ cards, condition, onChange, onDelete }) => {
   return (
     <Card shadow="xs">
       <CardBody>
-        <Icon as={VscClose} onClick={onDelete} fontSize="xl" />
+        <Icon as={VscClose} fontSize="xl" onClick={onDelete} />
 
         <FormControl my={2}>
           <FormLabel>カードを選択</FormLabel>
           <Select
-            menuPortalTarget={document.body}
-            value={condition.uids.map((uid) => ({
-              label: cards.find((card) => card.uid === uid)?.name,
-              value: uid,
-            }))}
-            isMulti
-            isClearable={false}
             closeMenuOnSelect={false}
-            options={cards.map((card) => ({
-              label: card.name,
-              value: card.uid,
-            }))}
+            isClearable={false}
+            isMulti
+            menuPortalTarget={document.body}
             onChange={(selectedValues) => {
               const uids = selectedValues.map((value) => value.value)
               onChange({ ...condition, uids })
             }}
+            options={cards.map((card) => ({
+              label: card.name,
+              value: card.uid,
+            }))}
+            value={condition.uids.map((uid) => ({
+              label: cards.find((card) => card.uid === uid)?.name,
+              value: uid,
+            }))}
           />
         </FormControl>
 
@@ -439,16 +440,28 @@ const ConditionInput: FC<{
           <FormLabel>枚数</FormLabel>
           <Input
             disabled={condition.mode === "not_drawn"}
+            onChange={(e) => onChange({ ...condition, count: Number(e.target.value) })}
             type="number"
             value={condition.count.toString()}
-            onChange={(e) => onChange({ ...condition, count: Number(e.target.value) ?? 1 })}
           />
         </FormControl>
 
         <FormControl my={2}>
           <FormLabel>条件</FormLabel>
           <Select
+            isClearable={false}
             menuPortalTarget={document.body}
+            onChange={(selectedValue) => {
+              onChange({
+                ...condition,
+                mode: selectedValue?.value as PatternMode,
+              })
+            }}
+            options={[
+              { label: "以上ドロー", value: "required" },
+              { label: "以上デッキに残す", value: "leave_deck" },
+              { label: "ドローなし", value: "not_drawn" },
+            ]}
             value={[
               {
                 label:
@@ -460,18 +473,6 @@ const ConditionInput: FC<{
                 value: condition.mode,
               },
             ]}
-            isClearable={false}
-            options={[
-              { label: "以上ドロー", value: "required" },
-              { label: "以上デッキに残す", value: "leave_deck" },
-              { label: "ドローなし", value: "not_drawn" },
-            ]}
-            onChange={(selectedValue) => {
-              onChange({
-                ...condition,
-                mode: selectedValue?.value as PatternMode,
-              })
-            }}
           />
         </FormControl>
       </CardBody>
@@ -480,20 +481,20 @@ const ConditionInput: FC<{
 }
 
 const PatternItem: FC<{
-  pattern: Pattern
+  cards: Array<CardData>
   index: number
+  labels: Array<{ name: string; uid: string }>
+  pattern: Pattern
   patterns: Array<Pattern>
   setPattern: (patterns: PatternState) => void
-  cards: Array<CardData>
-  labels: Array<{ name: string; uid: string }>
-}> = ({ pattern, index, patterns, setPattern, cards, labels }) => {
+}> = ({ cards, index, labels, pattern, patterns, setPattern }) => {
   const [active, setActive] = useState(pattern.active)
 
   const addCondition = () => {
     const newCondition = {
-      uids: [],
       count: 1,
       mode: "required",
+      uids: [],
     }
     const newPatterns = patterns.map((p, i) => {
       if (i === index) {
@@ -549,17 +550,17 @@ const PatternItem: FC<{
         <Flex gap={3} mb={2}>
           <Icon
             as={VscClose}
-            onClick={() => setPattern({ patterns: patterns.filter((_, i) => i !== index) })}
-            fontSize="xl"
             color="gray.600"
+            fontSize="xl"
+            onClick={() => setPattern({ patterns: patterns.filter((_, i) => i !== index) })}
           />
-          <Icon as={VscCopy} onClick={duplicatePattern} fontSize="xl" color="gray.600" />
-          <Icon as={VscArrowCircleUp} onClick={movePatternUp} fontSize="xl" color="gray.600" />
-          <Icon as={VscArrowCircleDown} onClick={movePatternDown} fontSize="xl" color="gray.600" />
+          <Icon as={VscCopy} color="gray.600" fontSize="xl" onClick={duplicatePattern} />
+          <Icon as={VscArrowCircleUp} color="gray.600" fontSize="xl" onClick={movePatternUp} />
+          <Icon as={VscArrowCircleDown} color="gray.600" fontSize="xl" onClick={movePatternDown} />
         </Flex>
 
-        <Flex gap={1} align="center">
-          <Icon as={active ? LuCheckCircle2 : LuCircle} onClick={handleToggleActive} fontSize="xl" />
+        <Flex align="center" gap={1}>
+          <Icon as={active ? LuCheckCircle2 : LuCircle} fontSize="xl" onClick={handleToggleActive} />
 
           <Accordion allowToggle w="full">
             <AccordionItem border="none">
@@ -570,7 +571,7 @@ const PatternItem: FC<{
                   }}
                 >
                   <Box as="span" flex="1" textAlign="left">
-                    <Text fontSize="lg" as="b" color={active ? "gray.800" : "gray.500"}>
+                    <Text as="b" color={active ? "gray.800" : "gray.500"} fontSize="lg">
                       {pattern.name}
                     </Text>
                   </Box>
@@ -579,14 +580,14 @@ const PatternItem: FC<{
               </h2>
 
               <Box ml={4}>
-                <Text fontSize="md" color="gray.600">
+                <Text color="gray.600" fontSize="md">
                   ラベル:&nbsp;
                   {pattern.labels
                     .map((label) => labels.find((l) => l.uid === label.uid)?.name)
                     .filter(Boolean)
                     .join(", ")}
                 </Text>
-                <Text fontSize="md" color="gray.600">
+                <Text color="gray.600" fontSize="md">
                   優先度: {pattern.priority}
                 </Text>
               </Box>
@@ -598,8 +599,6 @@ const PatternItem: FC<{
                       <FormControl>
                         <FormLabel>パターン名</FormLabel>
                         <Input
-                          type="text"
-                          value={pattern.name}
                           onChange={(e) => {
                             const newPatterns = patterns.map((p, i) => {
                               if (i === index) {
@@ -609,6 +608,8 @@ const PatternItem: FC<{
                             })
                             setPattern({ patterns: newPatterns })
                           }}
+                          type="text"
+                          value={pattern.name}
                         />
                       </FormControl>
                     </Box>
@@ -617,18 +618,10 @@ const PatternItem: FC<{
                       <FormControl>
                         <FormLabel>ラベル</FormLabel>
                         <Select
-                          menuPortalTarget={document.body}
-                          value={pattern.labels.map((label) => ({
-                            label: labels.find((l) => l.uid === label.uid)?.name,
-                            value: label.uid,
-                          }))}
-                          isMulti
-                          isClearable={false}
                           closeMenuOnSelect={false}
-                          options={labels.map((label) => ({
-                            label: label.name,
-                            value: label.uid,
-                          }))}
+                          isClearable={false}
+                          isMulti
+                          menuPortalTarget={document.body}
                           onChange={(selectedValues) => {
                             const newLabels = selectedValues.map((value) => ({
                               uid: value.value,
@@ -641,6 +634,14 @@ const PatternItem: FC<{
                             })
                             setPattern({ patterns: newPatterns })
                           }}
+                          options={labels.map((label) => ({
+                            label: label.name,
+                            value: label.uid,
+                          }))}
+                          value={pattern.labels.map((label) => ({
+                            label: labels.find((l) => l.uid === label.uid)?.name,
+                            value: label.uid,
+                          }))}
                         />
                       </FormControl>
                     </Box>
@@ -649,20 +650,20 @@ const PatternItem: FC<{
                       <FormControl>
                         <FormLabel>優先度</FormLabel>
                         <Input
-                          type="number"
-                          value={pattern.priority.toString()}
                           onChange={(e) => {
                             const newPatterns = patterns.map((p, i) => {
                               if (i === index) {
                                 return {
                                   ...p,
-                                  priority: Number(e.target.value) ?? 1,
+                                  priority: Number(e.target.value),
                                 }
                               }
                               return p
                             })
                             setPattern({ patterns: newPatterns })
                           }}
+                          type="number"
+                          value={pattern.priority.toString()}
                         />
                       </FormControl>
                     </Box>
@@ -671,8 +672,8 @@ const PatternItem: FC<{
                   {pattern.conditions.map((condition, conditionIndex) => (
                     <Box key={conditionIndex}>
                       <ConditionInput
-                        condition={condition}
                         cards={cards}
+                        condition={condition}
                         onChange={(updatedCondition) => {
                           const newConditions = pattern.conditions.map((c, i) => {
                             if (i === conditionIndex) {
@@ -703,7 +704,7 @@ const PatternItem: FC<{
                   ))}
                 </Grid>
 
-                <Button onClick={addCondition} mt={4}>
+                <Button mt={4} onClick={addCondition}>
                   条件を追加
                 </Button>
               </AccordionPanel>
@@ -717,19 +718,19 @@ const PatternItem: FC<{
 
 const PatternList: FC<{
   cards: Array<CardData>
+  labels: Array<{ name: string; uid: string }>
   patterns: Array<Pattern>
   setPattern: (patterns: PatternState) => void
-  labels: Array<{ name: string; uid: string }>
-}> = ({ cards, patterns, setPattern, labels }) => {
+}> = ({ cards, labels, patterns, setPattern }) => {
   const addPattern = () => {
     const newPattern = {
-      uid: uuidv4(),
-      name: `パターン${patterns.length + 1}`,
-      conditions: [],
-      priority: 1,
-      labels: [],
       active: true,
+      conditions: [],
       expanded: true,
+      labels: [],
+      name: `パターン${patterns.length + 1}`,
+      priority: 1,
+      uid: uuidv4(),
     }
     setPattern({ patterns: [...patterns, newPattern] })
   }
@@ -740,12 +741,12 @@ const PatternList: FC<{
       {patterns.map((pattern, index) => (
         <Box key={index} my={4}>
           <PatternItem
-            pattern={pattern}
+            cards={cards}
             index={index}
+            labels={labels}
+            pattern={pattern}
             patterns={patterns}
             setPattern={setPattern}
-            cards={cards}
-            labels={labels}
           />
         </Box>
       ))}
@@ -755,10 +756,10 @@ const PatternList: FC<{
 
 const LabelManagement: FC<{
   labels: Array<{ name: string; uid: string }>
-  setLabels: (labels: LabelState) => void
   patterns: Array<Pattern>
+  setLabels: (labels: LabelState) => void
   setPatterns: (patterns: PatternState) => void
-}> = ({ labels, setLabels, patterns, setPatterns }) => {
+}> = ({ labels, patterns, setLabels, setPatterns }) => {
   const addLabel = () => {
     const labelToAdd = { name: "新規ラベル", uid: uuidv4() }
     setLabels({ labels: [...labels, labelToAdd] })
@@ -787,16 +788,16 @@ const LabelManagement: FC<{
 
   return (
     <Box mb={4}>
-      <Button onClick={addLabel} mb={4}>
+      <Button mb={4} onClick={addLabel}>
         ラベルを追加
       </Button>
       <Grid gap={4} templateColumns="repeat(auto-fill, minmax(300px, 1fr))">
         {labels.map((label) => (
           <Card key={label.uid}>
             <CardBody>
-              <Flex justify="space-between" align="center" gap={2}>
-                <Icon as={VscClose} onClick={() => deleteLabel(label.uid)} fontSize="xl" />
-                <Input value={label.name} onChange={(e) => editLabel(label.uid, e.target.value)} />
+              <Flex align="center" gap={2} justify="space-between">
+                <Icon as={VscClose} fontSize="xl" onClick={() => deleteLabel(label.uid)} />
+                <Input onChange={(e) => editLabel(label.uid, e.target.value)} value={label.name} />
               </Flex>
             </CardBody>
           </Card>
@@ -807,7 +808,7 @@ const LabelManagement: FC<{
 }
 
 const checkPatternConditions = (
-  drawnCards: Array<{ uid: string; name: string }>,
+  drawnCards: Array<{ name: string; uid: string }>,
   pattern: Pattern,
   totalDeckCount: number,
 ) => {
@@ -842,17 +843,17 @@ const calculateProbability = (deck: DeckState, card: CardsState, pattern: Patter
   const { patterns } = pattern
 
   const totalDeckCards = cards.reduce((total, c) => total + c.count, 0)
-  const fullDeck: Array<{ uid: string; name: string }> = []
+  const fullDeck: Array<{ name: string; uid: string }> = []
 
   for (const c of cards) {
     for (let i = 0; i < c.count; i++) {
-      fullDeck.push({ uid: c.uid, name: c.name })
+      fullDeck.push({ name: c.name, uid: c.uid })
     }
   }
 
   const unknownCardCount = cardCount - totalDeckCards
   if (unknownCardCount > 0) {
-    const unknownCard = { uid: "unknown_card", name: "unknown" }
+    const unknownCard = { name: "unknown", uid: "unknown_card" }
     for (let i = 0; i < unknownCardCount; i++) {
       fullDeck.push(unknownCard)
     }
@@ -876,7 +877,7 @@ const calculateProbability = (deck: DeckState, card: CardsState, pattern: Patter
       successCount++
 
       for (const match of matches) {
-        if (match.labels && match.labels.length > 0) {
+        if (match.labels?.length > 0) {
           for (const label of match.labels) {
             if (label.uid === "") {
               continue
@@ -924,20 +925,20 @@ const calculateProbability = (deck: DeckState, card: CardsState, pattern: Patter
     }, {})
 
   return {
-    overallProbability: sprintf("%.2f", overallProbability),
     labelSuccessRates: sortedLabelSuccessRates,
+    overallProbability: sprintf("%.2f", overallProbability),
     patternSuccessRates: sortedPatternSuccessRates,
   }
 }
 
 const fetchShortUrl = async (url: string) => {
   const response = await fetch("https://ur0.cc/api.php?create=true", {
-    method: "POST",
+    body: `url=${encodeURIComponent(url)}`,
     headers: {
       Accept: "application/json",
       "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
     },
-    body: `url=${encodeURIComponent(url)}`,
+    method: "POST",
   })
 
   const json = (await response.json()) as { shorturl: string }

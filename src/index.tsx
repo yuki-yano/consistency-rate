@@ -11,11 +11,11 @@ app.get("*", (c) => {
           <title>初動率計算機</title>
           <meta charSet="utf-8" />
           <meta content="width=device-width, initial-scale=1" name="viewport" />
-          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+          <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport" />
           {import.meta.env.PROD ? (
-            <script type="module" src="/client.js" />
+            <script src="/client.js" type="module" />
           ) : (
-            <script type="module" src="/src/client.tsx" />
+            <script src="/src/client.tsx" type="module" />
           )}
         </head>
         <body>

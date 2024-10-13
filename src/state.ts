@@ -11,29 +11,29 @@ export type CardsState = {
 }
 
 export type CardData = {
-  name: string
   count: number
+  name: string
   uid: string
 }
 
-export type PatternMode = "required" | "leave_deck" | "not_drawn"
+export type PatternMode = "leave_deck" | "not_drawn" | "required"
 
 export type Condition = {
-  uids: Array<string>
   count: number
   mode: PatternMode
+  uids: Array<string>
 }
 
 export type Pattern = {
-  uid: string
+  active: boolean
   conditions: Array<Condition>
+  expanded: boolean
   labels: Array<{
     uid: string
   }>
-  priority: number
   name: string
-  active: boolean
-  expanded: boolean
+  priority: number
+  uid: string
 }
 
 export type PatternState = {
@@ -65,8 +65,8 @@ const defaultLabelState: LabelState = {
 }
 
 const urlSerializeOptions = {
-  serialize: (value: unknown) => lzstring.compressToBase64(JSON.stringify(value)),
   deserialize: (value: string) => JSON.parse(lzstring.decompressFromBase64(value)),
+  serialize: (value: unknown) => lzstring.compressToBase64(JSON.stringify(value)),
 }
 
 export const deckAtom = atomWithHash<DeckState>("deck", defaultDeckState, {
