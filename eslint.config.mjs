@@ -47,6 +47,8 @@ export default [
       "@typescript-eslint/strict-boolean-expressions": "error",
       "@typescript-eslint/no-floating-promises": "error",
       "react/react-in-jsx-scope": "off",
+      "react/prop-types": "off",
+      "react/display-name": "off",
     },
   },
   {
