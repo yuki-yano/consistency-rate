@@ -1,3 +1,4 @@
+import { atom } from "jotai"
 import { atomWithHash } from "jotai-location"
 import lzstring from "lz-string"
 
@@ -47,6 +48,12 @@ export type LabelState = {
   }>
 }
 
+type CalculationResultState = {
+  labelSuccessRates: { [label: string]: string }
+  overallProbability: string
+  patternSuccessRates: { [patternId: string]: string }
+}
+
 const defaultDeckState: DeckState = {
   cardCount: 40,
   firstHand: 5,
@@ -84,3 +91,5 @@ export const patternAtom = atomWithHash<PatternState>("pattern", defaultPatternS
 export const labelAtom = atomWithHash<LabelState>("label", defaultLabelState, {
   ...urlSerializeOptions,
 })
+
+export const calculationResultAtom = atom<CalculationResultState | null>(null)

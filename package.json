@@ -17,6 +17,7 @@
     "framer-motion": "^11.11.1",
     "hono": "^4.6.3",
     "jotai": "^2.10.0",
+    "jotai-devtools": "^0.10.1",
     "jotai-location": "^0.5.5",
     "lz-string": "^1.5.0",
     "react": "^18.3.1",

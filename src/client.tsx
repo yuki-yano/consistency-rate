@@ -25,9 +25,10 @@ import {
   useClipboard,
 } from "@chakra-ui/react"
 import { Select } from "chakra-react-select"
-import { useAtom } from "jotai"
+import { useAtom, useAtomValue, useSetAtom } from "jotai"
+import { DevTools } from "jotai-devtools"
+import "jotai-devtools/styles.css"
 import { type FC, useEffect, useState } from "react"
-import React from "react"
 import { createRoot } from "react-dom/client"
 import { LuCheckCircle2, LuCircle } from "react-icons/lu"
 import { VscArrowCircleDown, VscArrowCircleUp, VscClose, VscCopy } from "react-icons/vsc"
@@ -36,75 +37,45 @@ import { v4 as uuidv4 } from "uuid"
 import { calculateProbability } from "./calc"
 import { fetchShortUrl } from "./fetch"
 import {
+  calculationResultAtom,
   type CardData,
   cardsAtom,
-  type CardsState,
   type Condition,
   deckAtom,
-  type DeckState,
   labelAtom,
-  type LabelState,
   type Pattern,
   patternAtom,
   type PatternMode,
-  type PatternState,
 } from "./state"
 import { theme } from "./theme"
-
-type CalculationResult = {
-  labelSuccessRates: { [label: string]: string }
-  overallProbability: string
-  patternSuccessRates: { [patternId: string]: string }
-}
 
 const Root = () => {
   return (
     <ChakraProvider theme={theme}>
+      {import.meta.env.DEV && <DevTools />}
       <App />
     </ChakraProvider>
   )
 }
 
 const App: FC = () => {
-  const [deck, setDeck] = useAtom(deckAtom)
-  const [card, setCard] = useAtom(cardsAtom)
-  const [pattern, setPattern] = useAtom(patternAtom)
-  const [labels, setLabels] = useAtom(labelAtom)
   const [trials, setTrials] = useState<number>(100000)
   const { hasCopied, onCopy, setValue: setShortUrl, value: shortUrl } = useClipboard("")
   const [loadingShortUrl, setLoadingShortUrl] = useState(false)
-
-  useEffect(() => {
-    setPattern({
-      patterns: pattern.patterns.map((p) => ({ ...p, expanded: false })),
-    })
-
-    if (pattern.patterns.length !== 0) {
-      setCalculationResult(calculateProbability(deck, card, pattern, trials))
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const [calculationResult, setCalculationResult] = useState<CalculationResult | null>(null)
 
   return (
     <Container maxW="container.xl">
       <Heading as="h1" py={4} size="lg">
         <Link href="/">初動率計算機</Link>
       </Heading>
-      <Box my={4}>
+
+      <Box my={2}>
         <Flex gap={4}>
-          <Button
-            onClick={() => {
-              setCalculationResult(calculateProbability(deck, card, pattern, trials))
-            }}
-          >
-            計算
-          </Button>
+          <CalculateButton trials={trials} />
         </Flex>
       </Box>
 
-      <Flex gap={1} my={4}>
+      <Flex gap={1} mb={4} mt={2}>
         <Button
           disabled={loadingShortUrl}
           onClick={async () => {
@@ -133,38 +104,34 @@ const App: FC = () => {
       </Flex>
 
       <Grid gap={4} templateColumns="repeat(auto-fill, minmax(300px, 1fr))">
-        <Deck deck={deck} setDeck={setDeck} setTrials={setTrials} trials={trials} />
-
-        {calculationResult != null && (
-          <SuccessRates calculationResult={calculationResult} labels={labels} pattern={pattern} />
-        )}
+        <Deck setTrials={setTrials} trials={trials} />
+        <SuccessRates />
       </Grid>
 
       <Divider my={4} />
 
-      <CardList cards={card.cards} patterns={pattern.patterns} setCard={setCard} setPattern={setPattern} />
+      <CardList />
 
       <Divider my={4} />
 
-      <LabelManagement
-        labels={labels.labels}
-        patterns={pattern.patterns}
-        setLabels={setLabels}
-        setPatterns={setPattern}
-      />
+      <LabelManagement />
 
       <Divider my={4} />
 
-      <PatternList cards={card.cards} labels={labels.labels} patterns={pattern.patterns} setPattern={setPattern} />
+      <PatternList />
     </Container>
   )
 }
 
-const SuccessRates: FC<{
-  calculationResult: CalculationResult
-  labels: LabelState
-  pattern: PatternState
-}> = ({ calculationResult, labels, pattern }) => {
+const SuccessRates: FC = () => {
+  const calculationResult = useAtomValue(calculationResultAtom)
+  const labels = useAtomValue(labelAtom)
+  const pattern = useAtomValue(patternAtom)
+
+  if (calculationResult == null) {
+    return null
+  }
+
   return (
     <>
       <Card>
@@ -214,11 +181,11 @@ const SuccessRates: FC<{
 }
 
 const Deck: FC<{
-  deck: DeckState
-  setDeck: (deck: DeckState) => void
   setTrials: (trials: number) => void
   trials: number
-}> = ({ deck, setDeck, setTrials, trials }) => {
+}> = ({ setTrials, trials }) => {
+  const [deck, setDeck] = useAtom(deckAtom)
+
   return (
     <Card>
       <CardBody>
@@ -273,15 +240,48 @@ const Deck: FC<{
   )
 }
 
-const CardList: FC<{
-  cards: Array<CardData>
-  patterns: Array<Pattern>
-  setCard: (cards: CardsState) => void
-  setPattern: (patterns: PatternState) => void
-}> = ({ cards, patterns, setCard, setPattern }) => {
+const CardList: FC = () => {
+  const [cardState, setCardState] = useAtom(cardsAtom)
+  const cards = cardState.cards
+
+  const handleClick = () => {
+    const newCards = cards.concat({
+      count: 1,
+      name: `新規カード${cards.length + 1}`,
+      uid: uuidv4(),
+    })
+    setCardState({ cards: newCards })
+  }
+
+  return (
+    <Box>
+      <Button mb={4} onClick={handleClick}>
+        カードを追加
+      </Button>
+
+      <Grid gap={4} templateColumns="repeat(auto-fill, minmax(300px, 1fr))">
+        {cards.map((card, index) => (
+          <CardItem index={index} key={card.uid} />
+        ))}
+      </Grid>
+    </Box>
+  )
+}
+
+const CardItem: FC<{
+  index: number
+}> = ({ index }) => {
+  const [cardState, setCardState] = useAtom(cardsAtom)
+  const cards = cardState.cards
+  const card = cards[index]
+  const [patternState, setPatternState] = useAtom(patternAtom)
+  const patterns = patternState.patterns
+
+  const [tmpName, setTempName] = useState(card.name)
+
   const handleDeleteCard = (uid: string) => {
     const newCards = cards.filter((c) => c.uid !== uid)
-    setCard({ cards: newCards })
+    setCardState({ cards: newCards })
 
     const updatedPatterns = patterns.map((pattern) => {
       const updatedConditions = pattern.conditions.map((condition) => ({
@@ -290,7 +290,7 @@ const CardList: FC<{
       }))
       return { ...pattern, conditions: updatedConditions }
     })
-    setPattern({ patterns: updatedPatterns })
+    setPatternState({ patterns: updatedPatterns })
   }
 
   const moveCardUp = (index: number) => {
@@ -298,7 +298,7 @@ const CardList: FC<{
       const newCards = [...cards]
       const [movedCard] = newCards.splice(index, 1)
       newCards.splice(index - 1, 0, movedCard)
-      setCard({ cards: newCards })
+      setCardState({ cards: newCards })
     }
   }
 
@@ -307,7 +307,7 @@ const CardList: FC<{
       const newCards = [...cards]
       const [movedCard] = newCards.splice(index, 1)
       newCards.splice(index + 1, 0, movedCard)
-      setCard({ cards: newCards })
+      setCardState({ cards: newCards })
     }
   }
 
@@ -318,51 +318,8 @@ const CardList: FC<{
       }
       return c
     })
-    setCard({ cards: newCards })
+    setCardState({ cards: newCards })
   }
-
-  return (
-    <Box>
-      <Button
-        mb={4}
-        onClick={() => {
-          const newCards = cards.concat({
-            count: 1,
-            name: "",
-            uid: uuidv4(),
-          })
-          setCard({ cards: newCards })
-        }}
-      >
-        カードを追加
-      </Button>
-
-      <Grid gap={4} templateColumns="repeat(auto-fill, minmax(300px, 1fr))">
-        {cards.map((card, index) => (
-          <CardItem
-            card={card}
-            handleDeleteCard={handleDeleteCard}
-            index={index}
-            key={card.uid}
-            moveCardDown={moveCardDown}
-            moveCardUp={moveCardUp}
-            updateCard={updateCard}
-          />
-        ))}
-      </Grid>
-    </Box>
-  )
-}
-
-const CardItem: FC<{
-  card: CardData
-  handleDeleteCard: (uid: string) => void
-  index: number
-  moveCardDown: (index: number) => void
-  moveCardUp: (index: number) => void
-  updateCard: (updatedCard: CardData) => void
-}> = ({ card, handleDeleteCard, index, moveCardDown, moveCardUp, updateCard }) => {
-  const [tmpName, setTempName] = useState(card.name)
 
   return (
     <Card key={card.uid} py={2}>
@@ -406,11 +363,42 @@ const CardItem: FC<{
 }
 
 const ConditionInput: FC<{
-  cards: Array<CardData>
-  condition: Condition
-  onChange: (condition: Condition) => void
-  onDelete: () => void
-}> = ({ cards, condition, onChange, onDelete }) => {
+  conditionIndex: number
+  patternIndex: number
+}> = ({ conditionIndex, patternIndex }) => {
+  const cards = useAtomValue(cardsAtom).cards
+  const condition = useAtomValue(patternAtom).patterns[patternIndex].conditions[conditionIndex]
+  const [patternState, setPattern] = useAtom(patternAtom)
+  const patterns = patternState.patterns
+  const pattern = patternState.patterns[patternIndex]
+
+  const onChange = (updatedCondition: Condition) => {
+    const newConditions = pattern.conditions.map((c, i) => {
+      if (i === conditionIndex) {
+        return updatedCondition
+      }
+      return c
+    })
+    const newPatterns = patterns.map((p, i) => {
+      if (i === patternIndex) {
+        return { ...p, conditions: newConditions }
+      }
+      return p
+    })
+    setPattern({ patterns: newPatterns })
+  }
+
+  const onDelete = () => {
+    const newConditions = pattern.conditions.filter((_, i) => i !== conditionIndex)
+    const newPatterns = patterns.map((p, i) => {
+      if (i === patternIndex) {
+        return { ...p, conditions: newConditions }
+      }
+      return p
+    })
+    setPattern({ patterns: newPatterns })
+  }
+
   return (
     <Card shadow="xs">
       <CardBody>
@@ -482,14 +470,11 @@ const ConditionInput: FC<{
   )
 }
 
-const PatternItem: FC<{
-  cards: Array<CardData>
-  index: number
-  labels: Array<{ name: string; uid: string }>
-  pattern: Pattern
-  patterns: Array<Pattern>
-  setPattern: (patterns: PatternState) => void
-}> = ({ cards, index, labels, pattern, patterns, setPattern }) => {
+const PatternItem: FC<{ index: number }> = ({ index }) => {
+  const labels = useAtomValue(labelAtom).labels
+  const [patternState, setPattern] = useAtom(patternAtom)
+  const patterns = patternState.patterns
+  const pattern = patternState.patterns[index]
   const [active, setActive] = useState(pattern.active)
 
   const addCondition = () => {
@@ -596,112 +581,10 @@ const PatternItem: FC<{
 
               <AccordionPanel>
                 <Grid gap={4} templateColumns="repeat(auto-fill, minmax(300px, 1fr))">
-                  <Box py={2}>
-                    <Box my={2}>
-                      <FormControl>
-                        <FormLabel>パターン名</FormLabel>
-                        <Input
-                          onChange={(e) => {
-                            const newPatterns = patterns.map((p, i) => {
-                              if (i === index) {
-                                return { ...p, name: e.target.value }
-                              }
-                              return p
-                            })
-                            setPattern({ patterns: newPatterns })
-                          }}
-                          type="text"
-                          value={pattern.name}
-                        />
-                      </FormControl>
-                    </Box>
-
-                    <Box my={2}>
-                      <FormControl>
-                        <FormLabel>ラベル</FormLabel>
-                        <Select
-                          closeMenuOnSelect={false}
-                          isClearable={false}
-                          isMulti
-                          menuPortalTarget={document.body}
-                          onChange={(selectedValues) => {
-                            const newLabels = selectedValues.map((value) => ({
-                              uid: value.value,
-                            }))
-                            const newPatterns = patterns.map((p, i) => {
-                              if (i === index) {
-                                return { ...p, labels: newLabels }
-                              }
-                              return p
-                            })
-                            setPattern({ patterns: newPatterns })
-                          }}
-                          options={labels.map((label) => ({
-                            label: label.name,
-                            value: label.uid,
-                          }))}
-                          value={pattern.labels.map((label) => ({
-                            label: labels.find((l) => l.uid === label.uid)?.name,
-                            value: label.uid,
-                          }))}
-                        />
-                      </FormControl>
-                    </Box>
-
-                    <Box my={2}>
-                      <FormControl>
-                        <FormLabel>優先度</FormLabel>
-                        <Input
-                          onChange={(e) => {
-                            const newPatterns = patterns.map((p, i) => {
-                              if (i === index) {
-                                return {
-                                  ...p,
-                                  priority: Number(e.target.value),
-                                }
-                              }
-                              return p
-                            })
-                            setPattern({ patterns: newPatterns })
-                          }}
-                          type="number"
-                          value={pattern.priority.toString()}
-                        />
-                      </FormControl>
-                    </Box>
-                  </Box>
-
-                  {pattern.conditions.map((condition, conditionIndex) => (
+                  <PatternInput patternIndex={index} />
+                  {pattern.conditions.map((_, conditionIndex) => (
                     <Box key={conditionIndex}>
-                      <ConditionInput
-                        cards={cards}
-                        condition={condition}
-                        onChange={(updatedCondition) => {
-                          const newConditions = pattern.conditions.map((c, i) => {
-                            if (i === conditionIndex) {
-                              return updatedCondition
-                            }
-                            return c
-                          })
-                          const newPatterns = patterns.map((p, i) => {
-                            if (i === index) {
-                              return { ...p, conditions: newConditions }
-                            }
-                            return p
-                          })
-                          setPattern({ patterns: newPatterns })
-                        }}
-                        onDelete={() => {
-                          const newConditions = pattern.conditions.filter((_, i) => i !== conditionIndex)
-                          const newPatterns = patterns.map((p, i) => {
-                            if (i === index) {
-                              return { ...p, conditions: newConditions }
-                            }
-                            return p
-                          })
-                          setPattern({ patterns: newPatterns })
-                        }}
-                      />
+                      <ConditionInput conditionIndex={conditionIndex} patternIndex={index} />
                     </Box>
                   ))}
                 </Grid>
@@ -718,12 +601,106 @@ const PatternItem: FC<{
   )
 }
 
-const PatternList: FC<{
-  cards: Array<CardData>
-  labels: Array<{ name: string; uid: string }>
-  patterns: Array<Pattern>
-  setPattern: (patterns: PatternState) => void
-}> = React.memo(({ cards, labels, patterns, setPattern }) => {
+const PatternInput: FC<{
+  patternIndex: number
+}> = ({ patternIndex }) => {
+  const [patternState, setPattern] = useAtom(patternAtom)
+  const patterns = patternState.patterns
+  const pattern = patternState.patterns[patternIndex]
+  const labels = useAtomValue(labelAtom).labels
+
+  const [tmpPatternName, setTempPatternName] = useState(pattern.name)
+
+  return (
+    <Box py={2}>
+      <Box my={2}>
+        <FormControl>
+          <FormLabel>パターン名</FormLabel>
+          <Input
+            onBlur={(e) => {
+              const newPatterns = patterns.map((p, i) => {
+                if (i === patternIndex) {
+                  return { ...p, name: e.target.value }
+                }
+                return p
+              })
+              setPattern({ patterns: newPatterns })
+            }}
+            onChange={(e) => setTempPatternName(e.target.value)}
+            type="text"
+            value={tmpPatternName}
+          />
+        </FormControl>
+      </Box>
+
+      <Box my={2}>
+        <FormControl>
+          <FormLabel>ラベル</FormLabel>
+          <Select
+            closeMenuOnSelect={false}
+            isClearable={false}
+            isMulti
+            menuPortalTarget={document.body}
+            onChange={(selectedValues) => {
+              const newLabels = selectedValues.map((value) => ({
+                uid: value.value,
+              }))
+              const newPatterns = patterns.map((p, i) => {
+                if (i === patternIndex) {
+                  return { ...p, labels: newLabels }
+                }
+                return p
+              })
+              setPattern({ patterns: newPatterns })
+            }}
+            options={labels.map((label) => ({
+              label: label.name,
+              value: label.uid,
+            }))}
+            value={pattern.labels.map((label) => ({
+              label: labels.find((l) => l.uid === label.uid)?.name,
+              value: label.uid,
+            }))}
+          />
+        </FormControl>
+      </Box>
+
+      <Box my={2}>
+        <FormControl>
+          <FormLabel>優先度</FormLabel>
+          <Input
+            onChange={(e) => {
+              const newPatterns = patterns.map((p, i) => {
+                if (i === patternIndex) {
+                  return {
+                    ...p,
+                    priority: Number(e.target.value),
+                  }
+                }
+                return p
+              })
+              setPattern({ patterns: newPatterns })
+            }}
+            type="number"
+            value={pattern.priority.toString()}
+          />
+        </FormControl>
+      </Box>
+    </Box>
+  )
+}
+
+const PatternList: FC = () => {
+  const [patternState, setPatternState] = useAtom(patternAtom)
+  const patterns = patternState.patterns
+
+  useEffect(() => {
+    setPatternState({
+      patterns: patterns.map((p) => ({ ...p, expanded: false })),
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const addPattern = () => {
     const newPattern = {
       active: true,
@@ -734,48 +711,62 @@ const PatternList: FC<{
       priority: 1,
       uid: uuidv4(),
     }
-    setPattern({ patterns: [...patterns, newPattern] })
+    setPatternState({ patterns: [...patterns, newPattern] })
   }
 
   return (
     <Box>
       <Button onClick={addPattern}>パターンを追加</Button>
-      {patterns.map((pattern, index) => (
+      {patterns.map((_, index) => (
         <Box key={index} my={4}>
-          <PatternItem
-            cards={cards}
-            index={index}
-            labels={labels}
-            pattern={pattern}
-            patterns={patterns}
-            setPattern={setPattern}
-          />
+          <PatternItem index={index} />
         </Box>
       ))}
     </Box>
   )
-})
+}
 
-const LabelManagement: FC<{
-  labels: Array<{ name: string; uid: string }>
-  patterns: Array<Pattern>
-  setLabels: (labels: LabelState) => void
-  setPatterns: (patterns: PatternState) => void
-}> = ({ labels, patterns, setLabels, setPatterns }) => {
+const LabelManagement: FC = () => {
+  const [labelsState, setLabelsState] = useAtom(labelAtom)
+  const labels = labelsState.labels
+
   const addLabel = () => {
-    const labelToAdd = { name: "新規ラベル", uid: uuidv4() }
-    setLabels({ labels: [...labels, labelToAdd] })
+    const labelToAdd = { name: `新規ラベル${labels.length + 1}`, uid: uuidv4() }
+    setLabelsState({ labels: [...labels, labelToAdd] })
   }
+
+  return (
+    <Box mb={4}>
+      <Button mb={4} onClick={addLabel}>
+        ラベルを追加
+      </Button>
+      <Grid gap={4} templateColumns="repeat(auto-fill, minmax(300px, 1fr))">
+        {labels.map((_, index) => (
+          <Label key={index} labelIndex={index} />
+        ))}
+      </Grid>
+    </Box>
+  )
+}
+
+const Label: FC<{ labelIndex: number }> = ({ labelIndex }) => {
+  const [labelsState, setLabelsState] = useAtom(labelAtom)
+  const labels = labelsState.labels
+  const label = labels[labelIndex]
+  const [patternsState, setPatternsState] = useAtom(patternAtom)
+  const patterns = patternsState.patterns
+
+  const [tmpName, setTempName] = useState(label.name)
 
   const deleteLabel = (uid: string) => {
     const newLabels = labels.filter((label) => label.uid !== uid)
-    setLabels({ labels: newLabels })
+    setLabelsState({ labels: newLabels })
 
     const updatedPatterns = patterns.map((pattern) => ({
       ...pattern,
       labels: pattern.labels.filter((label) => label.uid !== uid),
     }))
-    setPatterns({ patterns: updatedPatterns })
+    setPatternsState({ patterns: updatedPatterns })
   }
 
   const editLabel = (uid: string, newName: string) => {
@@ -785,28 +776,37 @@ const LabelManagement: FC<{
       }
       return label
     })
-    setLabels({ labels: newLabels })
+    setLabelsState({ labels: newLabels })
   }
 
   return (
-    <Box mb={4}>
-      <Button mb={4} onClick={addLabel}>
-        ラベルを追加
-      </Button>
-      <Grid gap={4} templateColumns="repeat(auto-fill, minmax(300px, 1fr))">
-        {labels.map((label) => (
-          <Card key={label.uid}>
-            <CardBody>
-              <Flex align="center" gap={2} justify="space-between">
-                <Icon as={VscClose} fontSize="xl" onClick={() => deleteLabel(label.uid)} />
-                <Input onChange={(e) => editLabel(label.uid, e.target.value)} value={label.name} />
-              </Flex>
-            </CardBody>
-          </Card>
-        ))}
-      </Grid>
-    </Box>
+    <Card>
+      <CardBody>
+        <Flex align="center" gap={2} justify="space-between">
+          <Icon as={VscClose} fontSize="xl" onClick={() => deleteLabel(label.uid)} />
+          <Input
+            onBlur={(e) => editLabel(label.uid, e.target.value)}
+            onChange={(e) => setTempName(e.target.value)}
+            value={tmpName}
+          />
+        </Flex>
+      </CardBody>
+    </Card>
   )
+}
+
+const CalculateButton: FC<{ trials: number }> = ({ trials }) => {
+  const [deck] = useAtom(deckAtom)
+  const [card] = useAtom(cardsAtom)
+  const [pattern] = useAtom(patternAtom)
+  const setCalculationResult = useSetAtom(calculationResultAtom)
+
+  const handleCalculate = () => {
+    const result = calculateProbability(deck, card, pattern, trials)
+    setCalculationResult(result)
+  }
+
+  return <Button onClick={handleCalculate}>計算</Button>
 }
 
 const domNode = document.getElementById("root")

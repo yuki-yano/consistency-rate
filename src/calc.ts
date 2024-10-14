@@ -71,24 +71,26 @@ export const calculateProbability = (deck: DeckState, card: CardsState, pattern:
     if (matches.length > 0) {
       successCount++
 
+      const countedLabels = new Set<string>()
       for (const match of matches) {
+        const patternId = match.uid
+        if (!patternSuccessCount[patternId]) {
+          patternSuccessCount[patternId] = 0
+        }
+        patternSuccessCount[patternId]++
+
         if (match.labels?.length > 0) {
           for (const label of match.labels) {
-            if (label.uid === "") {
+            if (label.uid === "" || countedLabels.has(label.uid)) {
               continue
             }
+            countedLabels.add(label.uid)
             if (!labelSuccessCount[label.uid]) {
               labelSuccessCount[label.uid] = 0
             }
             labelSuccessCount[label.uid]++
           }
         }
-
-        const patternId = match.uid
-        if (!patternSuccessCount[patternId]) {
-          patternSuccessCount[patternId] = 0
-        }
-        patternSuccessCount[patternId]++
       }
     }
   }
