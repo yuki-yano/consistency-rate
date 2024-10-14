@@ -1,8 +1,17 @@
 import { accordionAnatomy, cardAnatomy } from "@chakra-ui/anatomy"
 import { createMultiStyleConfigHelpers, defineStyle, defineStyleConfig, extendTheme } from "@chakra-ui/react"
+import { ChakraStylesConfig } from "chakra-react-select"
 
 const { definePartsStyle: cardDefinePartsStyle } = createMultiStyleConfigHelpers(cardAnatomy.keys)
 const { definePartsStyle: accordionDefinePartsStyle } = createMultiStyleConfigHelpers(accordionAnatomy.keys)
+
+export const multiSelectStyles: ChakraStylesConfig = {
+  dropdownIndicator: (provided) => ({
+    ...provided,
+    p: 0,
+    w: "30px",
+  }),
+}
 
 export const theme = extendTheme({
   components: {

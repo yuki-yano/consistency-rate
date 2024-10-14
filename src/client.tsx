@@ -20,17 +20,18 @@ import {
   Input,
   Link,
   ListItem,
+  Show,
   Text,
   UnorderedList,
   useClipboard,
 } from "@chakra-ui/react"
-import { Select } from "chakra-react-select"
+import { Select as MultiSelect } from "chakra-react-select"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import { DevTools } from "jotai-devtools"
 import "jotai-devtools/styles.css"
-import { type FC, useEffect, useState } from "react"
+import { type FC, forwardRef, useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
-import { LuCheckCircle2, LuCircle } from "react-icons/lu"
+import { LuCalculator, LuCheckCircle2, LuCircle } from "react-icons/lu"
 import { VscArrowCircleDown, VscArrowCircleUp, VscClose, VscCopy } from "react-icons/vsc"
 import { v4 as uuidv4 } from "uuid"
 
@@ -46,8 +47,9 @@ import {
   type Pattern,
   patternAtom,
   type PatternMode,
+  potAtom,
 } from "./state"
-import { theme } from "./theme"
+import { multiSelectStyles, theme } from "./theme"
 
 const Root = () => {
   return (
@@ -62,79 +64,322 @@ const App: FC = () => {
   const [trials, setTrials] = useState<number>(100000)
   const { hasCopied, onCopy, setValue: setShortUrl, value: shortUrl } = useClipboard("")
   const [loadingShortUrl, setLoadingShortUrl] = useState(false)
+  const successRatesRef = useRef<HTMLDivElement>(null)
+
+  const scrollToSuccessRates = () => {
+    if (successRatesRef.current) {
+      successRatesRef.current.scrollIntoView({ behavior: "smooth", block: "start" })
+    }
+  }
 
   return (
-    <Container maxW="container.xl">
-      <Heading as="h1" py={4} size="lg">
-        <Link href="/">初動率計算機</Link>
-      </Heading>
+    <>
+      <Container maxW="container.xl" mb={4}>
+        <Heading as="h1" py={4} size="lg">
+          <Link href="/">初動率計算機</Link>
+        </Heading>
 
-      <Box my={2}>
-        <Flex gap={4}>
-          <CalculateButton trials={trials} />
+        <Show above="md">
+          <Box my={2}>
+            <Flex gap={4}>
+              <CalculateButton trials={trials} />
+            </Flex>
+          </Box>
+        </Show>
+
+        <Flex gap={1} mb={4} mt={2}>
+          <Button
+            disabled={loadingShortUrl}
+            onClick={async () => {
+              setLoadingShortUrl(true)
+              const shortUrl = await fetchShortUrl(location.href)
+              setShortUrl(shortUrl)
+              setLoadingShortUrl(false)
+            }}
+          >
+            短縮URLを生成
+          </Button>
+
+          <Input
+            maxW="150px"
+            onChange={(e) => {
+              setShortUrl(e.target.value)
+            }}
+            placeholder="短縮URL"
+            readOnly
+            value={shortUrl}
+          />
+
+          <Button disabled={loadingShortUrl || shortUrl === ""} onClick={onCopy}>
+            {hasCopied ? "Copied!" : "Copy"}
+          </Button>
         </Flex>
-      </Box>
 
-      <Flex gap={1} mb={4} mt={2}>
-        <Button
-          disabled={loadingShortUrl}
-          onClick={async () => {
-            setLoadingShortUrl(true)
-            const shortUrl = await fetchShortUrl(location.href)
-            setShortUrl(shortUrl)
-            setLoadingShortUrl(false)
-          }}
-        >
-          短縮URLを生成
-        </Button>
+        <Grid gap={4} templateColumns="repeat(auto-fill, minmax(300px, 1fr))">
+          <Deck setTrials={setTrials} trials={trials} />
+          <Pot />
+          <SuccessRates ref={successRatesRef} />
+        </Grid>
 
-        <Input
-          maxW="150px"
-          onChange={(e) => {
-            setShortUrl(e.target.value)
-          }}
-          placeholder="短縮URL"
-          readOnly
-          value={shortUrl}
-        />
+        <Divider my={4} />
 
-        <Button disabled={loadingShortUrl || shortUrl === ""} onClick={onCopy}>
-          {hasCopied ? "Copied!" : "Copy"}
-        </Button>
-      </Flex>
+        <CardList />
 
-      <Grid gap={4} templateColumns="repeat(auto-fill, minmax(300px, 1fr))">
-        <Deck setTrials={setTrials} trials={trials} />
-        <SuccessRates />
-      </Grid>
+        <Divider my={4} />
 
-      <Divider my={4} />
+        <LabelManagement />
 
-      <CardList />
+        <Divider my={4} />
 
-      <Divider my={4} />
+        <PatternList />
+      </Container>
 
-      <LabelManagement />
-
-      <Divider my={4} />
-
-      <PatternList />
-    </Container>
+      <Show below="md">
+        <SpCalcButton onClick={scrollToSuccessRates} trials={trials} />
+      </Show>
+    </>
   )
 }
 
-const SuccessRates: FC = () => {
+const SpCalcButton: FC<{
+  onClick: () => void
+  trials: number
+}> = ({ onClick, trials }) => {
+  const deck = useAtomValue(deckAtom)
+  const card = useAtomValue(cardsAtom)
+  const pattern = useAtomValue(patternAtom)
+  const pot = useAtomValue(potAtom)
+  const setCalculationResult = useSetAtom(calculationResultAtom)
+
+  const handleCalculate = () => {
+    const result = calculateProbability(deck, card, pattern, trials, pot)
+    setCalculationResult(result)
+    onClick()
+  }
+
+  return (
+    <Icon
+      as={LuCalculator}
+      bgColor="gray.300"
+      bottom={6}
+      boxShadow="md"
+      color="gray.500"
+      cursor="pointer"
+      h={14}
+      onClick={handleCalculate}
+      p={2}
+      position="fixed"
+      right={6}
+      rounded="full"
+      w={14}
+    />
+  )
+}
+
+const Deck: FC<{
+  setTrials: (trials: number) => void
+  trials: number
+}> = ({ setTrials, trials }) => {
+  const [deck, setDeck] = useAtom(deckAtom)
+  const [tmpTrials, setTmpTrials] = useState(trials)
+
+  return (
+    <Card>
+      <CardBody>
+        <Heading as="h2" fontSize="lg" py={2}>
+          デッキ情報
+        </Heading>
+
+        <Box my={2}>
+          <FormControl>
+            <FormLabel>枚数</FormLabel>
+            <Input
+              onChange={(e) => setDeck({ ...deck, cardCount: Number(e.target.value) })}
+              placeholder="40"
+              type="text"
+              value={deck.cardCount.toString()}
+            />
+          </FormControl>
+        </Box>
+
+        <Box my={2}>
+          <FormControl>
+            <FormLabel>初手枚数</FormLabel>
+            <Input
+              onChange={(e) => setDeck({ ...deck, firstHand: Number(e.target.value) })}
+              placeholder="5"
+              type="text"
+              value={deck.firstHand.toString()}
+            />
+          </FormControl>
+        </Box>
+
+        <Box my={2}>
+          <FormControl>
+            <FormLabel>試行回数</FormLabel>
+            <Input
+              onBlur={() => setTrials(tmpTrials)}
+              onChange={(e) => {
+                const input = Number(e.target.value)
+
+                if (input > 1000000) {
+                  setTmpTrials(1000000)
+                } else {
+                  setTmpTrials(input)
+                }
+              }}
+              type="text"
+              value={tmpTrials.toString()}
+            />
+          </FormControl>
+        </Box>
+      </CardBody>
+    </Card>
+  )
+}
+
+const Pot: FC = () => {
+  const [potState, setPotState] = useAtom(potAtom)
+  const prosperity = potState.prosperity
+  const desiresOrExtravagance = potState.desiresOrExtravagance
+
+  return (
+    <Card>
+      <CardBody>
+        <Heading as="h2" fontSize="lg" py={2}>
+          各種壺
+        </Heading>
+
+        <Box gap={2}>
+          <Flex direction="column" gap={2}>
+            <Card shadow="xs">
+              <CardBody>
+                <Heading as="h3" fontSize="md" pb={2}>
+                  金満で謙虚な壺
+                </Heading>
+
+                <Flex gap={2}>
+                  <FormControl>
+                    <FormLabel>枚数</FormLabel>
+                    <MultiSelect
+                      chakraStyles={multiSelectStyles}
+                      isClearable={false}
+                      menuPortalTarget={document.body}
+                      onChange={(selectedValue) => {
+                        setPotState({
+                          ...potState,
+                          prosperity: {
+                            ...prosperity,
+                            count: Number((selectedValue as { label: string; value: string }).value),
+                          },
+                        })
+                      }}
+                      options={[
+                        { label: "0", value: "0" },
+                        { label: "1", value: "1" },
+                        { label: "2", value: "2" },
+                        { label: "3", value: "3" },
+                      ]}
+                      value={[
+                        {
+                          label: prosperity.count.toString(),
+                          value: prosperity.count.toString(),
+                        },
+                      ]}
+                    />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel>コスト</FormLabel>
+                    <MultiSelect
+                      chakraStyles={multiSelectStyles}
+                      isClearable={false}
+                      menuPortalTarget={document.body}
+                      onChange={(selectedValue) => {
+                        setPotState({
+                          ...potState,
+                          prosperity: {
+                            ...prosperity,
+                            cost: Number((selectedValue as { label: string; value: string }).value) as 3 | 6,
+                          },
+                        })
+                      }}
+                      options={[
+                        { label: "3", value: "3" },
+                        { label: "6", value: "6" },
+                      ]}
+                      value={[
+                        {
+                          label: prosperity.cost.toString(),
+                          value: prosperity.cost.toString(),
+                        },
+                      ]}
+                    />
+                  </FormControl>
+                </Flex>
+              </CardBody>
+            </Card>
+
+            <Card shadow="xs">
+              <CardBody>
+                <Heading as="h3" fontSize="md" pb={2}>
+                  強欲で貪欲な壺, 強欲で金満な壺
+                </Heading>
+
+                <Flex gap={2}>
+                  <FormControl>
+                    <FormLabel>枚数</FormLabel>
+                    <MultiSelect
+                      chakraStyles={multiSelectStyles}
+                      isClearable={false}
+                      menuPortalTarget={document.body}
+                      onChange={(selectedValue) => {
+                        setPotState({
+                          ...potState,
+                          desiresOrExtravagance: {
+                            ...desiresOrExtravagance,
+                            count: Number((selectedValue as { label: string; value: string }).value),
+                          },
+                        })
+                      }}
+                      options={[
+                        { label: "0", value: "0" },
+                        { label: "1", value: "1" },
+                        { label: "2", value: "2" },
+                        { label: "3", value: "3" },
+                        { label: "4", value: "4" },
+                        { label: "5", value: "5" },
+                        { label: "6", value: "6" },
+                      ]}
+                      value={[
+                        {
+                          label: desiresOrExtravagance.count.toString(),
+                          value: desiresOrExtravagance.count.toString(),
+                        },
+                      ]}
+                    />
+                  </FormControl>
+                </Flex>
+              </CardBody>
+            </Card>
+          </Flex>
+        </Box>
+      </CardBody>
+    </Card>
+  )
+}
+
+const SuccessRates = forwardRef<HTMLDivElement>((_, ref) => {
   const calculationResult = useAtomValue(calculationResultAtom)
   const labels = useAtomValue(labelAtom)
   const pattern = useAtomValue(patternAtom)
 
   if (calculationResult == null) {
-    return null
+    return <div ref={ref} />
   }
 
   return (
     <>
-      <Card>
+      <Card ref={ref}>
         <CardBody>
           <Heading as="h2" fontSize="lg" py={2}>
             初動・パターン成立率
@@ -178,67 +423,7 @@ const SuccessRates: FC = () => {
       </Card>
     </>
   )
-}
-
-const Deck: FC<{
-  setTrials: (trials: number) => void
-  trials: number
-}> = ({ setTrials, trials }) => {
-  const [deck, setDeck] = useAtom(deckAtom)
-
-  return (
-    <Card>
-      <CardBody>
-        <Heading as="h2" fontSize="lg" py={2}>
-          デッキ情報
-        </Heading>
-
-        <Box my={2}>
-          <FormControl>
-            <FormLabel>枚数</FormLabel>
-            <Input
-              onChange={(e) => setDeck({ ...deck, cardCount: Number(e.target.value) })}
-              placeholder="40"
-              type="text"
-              value={deck.cardCount.toString()}
-            />
-          </FormControl>
-        </Box>
-
-        <Box my={2}>
-          <FormControl>
-            <FormLabel>初手枚数</FormLabel>
-            <Input
-              onChange={(e) => setDeck({ ...deck, firstHand: Number(e.target.value) })}
-              placeholder="5"
-              type="text"
-              value={deck.firstHand.toString()}
-            />
-          </FormControl>
-        </Box>
-
-        <Box my={2}>
-          <FormControl>
-            <FormLabel>試行回数</FormLabel>
-            <Input
-              onChange={(e) => {
-                const input = Number(e.target.value)
-
-                if (input > 1000000) {
-                  setTrials(1000000)
-                } else {
-                  setTrials(input)
-                }
-              }}
-              type="text"
-              value={trials.toString()}
-            />
-          </FormControl>
-        </Box>
-      </CardBody>
-    </Card>
-  )
-}
+})
 
 const CardList: FC = () => {
   const [cardState, setCardState] = useAtom(cardsAtom)
@@ -406,13 +591,14 @@ const ConditionInput: FC<{
 
         <FormControl my={2}>
           <FormLabel>カードを選択</FormLabel>
-          <Select
+          <MultiSelect
+            chakraStyles={multiSelectStyles}
             closeMenuOnSelect={false}
             isClearable={false}
             isMulti
             menuPortalTarget={document.body}
             onChange={(selectedValues) => {
-              const uids = selectedValues.map((value) => value.value)
+              const uids = (selectedValues as Array<{ label: string; value: string }>).map((value) => value.value)
               onChange({ ...condition, uids })
             }}
             options={cards.map((card) => ({
@@ -438,13 +624,13 @@ const ConditionInput: FC<{
 
         <FormControl my={2}>
           <FormLabel>条件</FormLabel>
-          <Select
-            isClearable={false}
+          <MultiSelect
+            chakraStyles={multiSelectStyles}
             menuPortalTarget={document.body}
             onChange={(selectedValue) => {
               onChange({
                 ...condition,
-                mode: selectedValue?.value as PatternMode,
+                mode: (selectedValue as { label: string; value: string })?.value as PatternMode,
               })
             }}
             options={[
@@ -636,13 +822,14 @@ const PatternInput: FC<{
       <Box my={2}>
         <FormControl>
           <FormLabel>ラベル</FormLabel>
-          <Select
+          <MultiSelect
+            chakraStyles={multiSelectStyles}
             closeMenuOnSelect={false}
             isClearable={false}
             isMulti
             menuPortalTarget={document.body}
             onChange={(selectedValues) => {
-              const newLabels = selectedValues.map((value) => ({
+              const newLabels = (selectedValues as Array<{ label: string; value: string }>).map((value) => ({
                 uid: value.value,
               }))
               const newPatterns = patterns.map((p, i) => {
@@ -796,13 +983,14 @@ const Label: FC<{ labelIndex: number }> = ({ labelIndex }) => {
 }
 
 const CalculateButton: FC<{ trials: number }> = ({ trials }) => {
-  const [deck] = useAtom(deckAtom)
-  const [card] = useAtom(cardsAtom)
-  const [pattern] = useAtom(patternAtom)
+  const deck = useAtomValue(deckAtom)
+  const card = useAtomValue(cardsAtom)
+  const pattern = useAtomValue(patternAtom)
+  const pot = useAtomValue(potAtom)
   const setCalculationResult = useSetAtom(calculationResultAtom)
 
   const handleCalculate = () => {
-    const result = calculateProbability(deck, card, pattern, trials)
+    const result = calculateProbability(deck, card, pattern, trials, pot)
     setCalculationResult(result)
   }
 

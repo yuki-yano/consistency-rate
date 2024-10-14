@@ -1,11 +1,11 @@
 import { sprintf } from "sprintf-js"
 
-import { CardsState, DeckState, Pattern, PatternState } from "./state"
+import { CardsState, DeckState, Pattern, PatternState, PotState } from "./state"
 
 const checkPatternConditions = (
   drawnCards: Array<{ name: string; uid: string }>,
+  shuffledDeck: Array<{ name: string; uid: string }>,
   pattern: Pattern,
-  totalDeckCount: number,
 ) => {
   if (!pattern.active) {
     return false
@@ -19,8 +19,11 @@ const checkPatternConditions = (
     }
 
     if (condition.mode === "leave_deck") {
-      const remainingDeckCount = totalDeckCount - drawnCards.length
-      return remainingDeckCount >= condition.count
+      const remainingCountInDeck = shuffledDeck.reduce((count, card) => {
+        return condition.uids.includes(card.uid) ? count + 1 : count
+      }, 0)
+
+      return remainingCountInDeck >= condition.count
     }
 
     if (condition.mode === "not_drawn") {
@@ -32,13 +35,38 @@ const checkPatternConditions = (
   })
 }
 
-export const calculateProbability = (deck: DeckState, card: CardsState, pattern: PatternState, trials: number) => {
+export const calculateProbability = (
+  deck: DeckState,
+  card: CardsState,
+  pattern: PatternState,
+  trials: number,
+  pot: PotState,
+) => {
   const { cardCount, firstHand } = deck
   const { cards } = card
   const { patterns } = pattern
 
+  const sortedPatterns = patterns
+    .filter((pattern) => pattern.active)
+    .sort((a, b) => {
+      if (a.priority !== b.priority) {
+        return a.priority - b.priority
+      }
+      return patterns.indexOf(a) - patterns.indexOf(b)
+    })
+
   const totalDeckCards = cards.reduce((total, c) => total + c.count, 0)
   const fullDeck: Array<{ name: string; uid: string }> = []
+
+  for (let i = 0; i < pot.prosperity.count; i++) {
+    const prosperityCard = { name: "prosperity", uid: "prosperity_card" }
+    fullDeck.push(prosperityCard)
+  }
+
+  for (let i = 0; i < pot.desiresOrExtravagance.count; i++) {
+    const desiresCard = { name: "desires", uid: "desires_card" }
+    fullDeck.push(desiresCard)
+  }
 
   for (const c of cards) {
     for (let i = 0; i < c.count; i++) {
@@ -59,36 +87,120 @@ export const calculateProbability = (deck: DeckState, card: CardsState, pattern:
   const patternSuccessCount: { [patternId: string]: number } = {}
 
   for (let i = 0; i < trials; i++) {
-    const shuffledDeck = fullDeck.slice()
-    for (let i = shuffledDeck.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
-      ;[shuffledDeck[i], shuffledDeck[j]] = [shuffledDeck[j], shuffledDeck[i]]
+    let shuffledDeck = fullDeck.slice()
+    for (let j = shuffledDeck.length - 1; j > 0; j--) {
+      const k = Math.floor(Math.random() * (j + 1))
+      ;[shuffledDeck[j], shuffledDeck[k]] = [shuffledDeck[k], shuffledDeck[j]]
     }
 
     const drawnCards = shuffledDeck.slice(0, firstHand)
-    const matches = patterns.filter((pattern) => checkPatternConditions(drawnCards, pattern, totalDeckCards))
 
-    if (matches.length > 0) {
-      successCount++
+    shuffledDeck = shuffledDeck.slice(firstHand)
 
-      const countedLabels = new Set<string>()
-      for (const match of matches) {
-        const patternId = match.uid
-        if (!patternSuccessCount[patternId]) {
-          patternSuccessCount[patternId] = 0
+    if (
+      !drawnCards.some((card) => card.uid === "prosperity_card") &&
+      drawnCards.some((card) => card.uid === "desires_card") &&
+      pot.desiresOrExtravagance.count > 0
+    ) {
+      const drawnCount = 2
+      const additionalDrawnCards = shuffledDeck.slice(0, drawnCount)
+      drawnCards.push(...additionalDrawnCards)
+
+      shuffledDeck = shuffledDeck.slice(drawnCount)
+    }
+
+    if (drawnCards.some((card) => card.uid === "prosperity_card")) {
+      const cost = pot.prosperity.cost
+      const extraCards = shuffledDeck.slice(firstHand, firstHand + cost)
+      let hasMatch = false
+
+      for (const cardToAdd of extraCards) {
+        const newDrawnCards = [...drawnCards, cardToAdd]
+        const matches = sortedPatterns.filter((pattern) => checkPatternConditions(newDrawnCards, shuffledDeck, pattern))
+
+        if (matches.length > 0) {
+          successCount++
+          hasMatch = true
+
+          const matchedLabels = new Set<string>()
+
+          for (const match of matches) {
+            const patternId = match.uid
+            if (!patternSuccessCount[patternId]) {
+              patternSuccessCount[patternId] = 0
+            }
+            patternSuccessCount[patternId]++
+
+            if (match.labels?.length > 0) {
+              for (const label of match.labels) {
+                if (!matchedLabels.has(label.uid)) {
+                  matchedLabels.add(label.uid)
+                  if (!labelSuccessCount[label.uid]) {
+                    labelSuccessCount[label.uid] = 0
+                  }
+                  labelSuccessCount[label.uid]++
+                }
+              }
+            }
+          }
+          break
         }
-        patternSuccessCount[patternId]++
+      }
 
-        if (match.labels?.length > 0) {
-          for (const label of match.labels) {
-            if (label.uid === "" || countedLabels.has(label.uid)) {
-              continue
+      if (!hasMatch) {
+        const matches = sortedPatterns.filter((pattern) => checkPatternConditions(drawnCards, shuffledDeck, pattern))
+
+        if (matches.length > 0) {
+          successCount++
+
+          const matchedLabels = new Set<string>()
+
+          for (const match of matches) {
+            const patternId = match.uid
+            if (!patternSuccessCount[patternId]) {
+              patternSuccessCount[patternId] = 0
             }
-            countedLabels.add(label.uid)
-            if (!labelSuccessCount[label.uid]) {
-              labelSuccessCount[label.uid] = 0
+            patternSuccessCount[patternId]++
+
+            if (match.labels?.length > 0) {
+              for (const label of match.labels) {
+                if (!matchedLabels.has(label.uid)) {
+                  matchedLabels.add(label.uid)
+                  if (!labelSuccessCount[label.uid]) {
+                    labelSuccessCount[label.uid] = 0
+                  }
+                  labelSuccessCount[label.uid]++
+                }
+              }
             }
-            labelSuccessCount[label.uid]++
+          }
+        }
+      }
+    } else {
+      const matches = sortedPatterns.filter((pattern) => checkPatternConditions(drawnCards, shuffledDeck, pattern))
+
+      if (matches.length > 0) {
+        successCount++
+
+        const matchedLabels = new Set<string>()
+
+        for (const match of matches) {
+          const patternId = match.uid
+          if (!patternSuccessCount[patternId]) {
+            patternSuccessCount[patternId] = 0
+          }
+          patternSuccessCount[patternId]++
+
+          if (match.labels?.length > 0) {
+            for (const label of match.labels) {
+              if (!matchedLabels.has(label.uid)) {
+                matchedLabels.add(label.uid)
+                if (!labelSuccessCount[label.uid]) {
+                  labelSuccessCount[label.uid] = 0
+                }
+                labelSuccessCount[label.uid]++
+              }
+            }
           }
         }
       }

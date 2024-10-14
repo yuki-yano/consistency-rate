@@ -54,6 +54,18 @@ type CalculationResultState = {
   patternSuccessRates: { [patternId: string]: string }
 }
 
+export type PotState = {
+  desiresOrExtravagance: {
+    count: number
+    priority: number
+  }
+  prosperity: {
+    cost: 3 | 6
+    count: number
+    priority: number
+  }
+}
+
 const defaultDeckState: DeckState = {
   cardCount: 40,
   firstHand: 5,
@@ -69,6 +81,18 @@ const defaultPatternState: PatternState = {
 
 const defaultLabelState: LabelState = {
   labels: [],
+}
+
+const defaultPotState: PotState = {
+  desiresOrExtravagance: {
+    count: 0,
+    priority: 2,
+  },
+  prosperity: {
+    cost: 6,
+    count: 0,
+    priority: 1,
+  },
 }
 
 const urlSerializeOptions = {
@@ -89,6 +113,10 @@ export const patternAtom = atomWithHash<PatternState>("pattern", defaultPatternS
 })
 
 export const labelAtom = atomWithHash<LabelState>("label", defaultLabelState, {
+  ...urlSerializeOptions,
+})
+
+export const potAtom = atomWithHash<PotState>("pot", defaultPotState, {
   ...urlSerializeOptions,
 })
 
