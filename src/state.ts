@@ -1,5 +1,5 @@
 import { atom } from "jotai"
-import { atomWithHash } from "jotai-location"
+import { atomWithHash, atomWithLocation } from "jotai-location"
 import lzstring from "lz-string"
 
 export type DeckState = {
@@ -99,6 +99,8 @@ const urlSerializeOptions = {
   deserialize: (value: string) => JSON.parse(lzstring.decompressFromBase64(value)),
   serialize: (value: unknown) => lzstring.compressToBase64(JSON.stringify(value)),
 }
+
+export const locAtom = atomWithLocation()
 
 export const deckAtom = atomWithHash<DeckState>("deck", defaultDeckState, {
   ...urlSerializeOptions,
