@@ -2,6 +2,7 @@ import { zValidator } from "@hono/zod-validator"
 import { Hono } from "hono"
 import { csrf } from "hono/csrf"
 import { renderToString } from "react-dom/server"
+import { v4 as uuidv4 } from "uuid"
 import { z } from "zod"
 
 type Bindings = {
@@ -11,6 +12,9 @@ type Bindings = {
 const app = new Hono<{ Bindings: Bindings }>()
 
 app.get("/", (c) => {
+  const queryDeckName = c.req.query("deckName")
+  const deckName = queryDeckName != null && queryDeckName !== "" ? ` - ${decodeURIComponent(queryDeckName)}` : ""
+
   return c.html(
     renderToString(
       <html lang="ja">
@@ -19,6 +23,12 @@ app.get("/", (c) => {
           <meta charSet="utf-8" />
           <meta content="width=device-width, initial-scale=1" name="viewport" />
           <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport" />
+
+          <meta content={`初動率計算機${deckName}`} property="og:title" />
+          <meta content="website" property="og:type" />
+          <meta content="ja_JP" property="og:locale" />
+          <meta content={`初動率計算機${deckName}`} property="twitter:title" />
+
           {import.meta.env.PROD ? (
             <script src="/client.js" type="module" />
           ) : (
@@ -50,7 +60,7 @@ const schema = z.object({
 const validator = zValidator("form", schema)
 
 const createKey = async (kv: KVNamespace, url: string) => {
-  const uuid = crypto.randomUUID()
+  const uuid = uuidv4()
   const key = uuid.substring(0, 8)
   const result = await kv.get(key)
 

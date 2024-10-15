@@ -44,6 +44,7 @@ import {
   type Condition,
   deckAtom,
   labelAtom,
+  locAtom,
   type Pattern,
   patternAtom,
   type PatternMode,
@@ -181,6 +182,7 @@ const Deck: FC<{
   trials: number
 }> = ({ setTrials, trials }) => {
   const [deck, setDeck] = useAtom(deckAtom)
+  const [loc, setLoc] = useAtom(locAtom)
   const [tmpTrials, setTmpTrials] = useState(trials)
 
   return (
@@ -189,6 +191,21 @@ const Deck: FC<{
         <Heading as="h2" fontSize="lg" py={2}>
           デッキ情報
         </Heading>
+
+        <Box my={2}>
+          <FormControl>
+            <FormLabel>デッキ名</FormLabel>
+            <Input
+              onChange={(e) => {
+                setLoc((prev) => ({
+                  ...prev,
+                  searchParams: new URLSearchParams([["deckName", encodeURIComponent(e.target.value)]]),
+                }))
+              }}
+              value={decodeURIComponent(loc.searchParams?.get("deckName") ?? "")}
+            />
+          </FormControl>
+        </Box>
 
         <Box my={2}>
           <FormControl>
