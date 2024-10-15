@@ -1,5 +1,5 @@
 export const fetchShortUrl = async (url: string) => {
-  const response = await fetch("https://ur0.cc/api.php?create=true", {
+  const response = await fetch("/api/shorten_url/create", {
     body: `url=${encodeURIComponent(url)}`,
     headers: {
       Accept: "application/json",
@@ -8,7 +8,7 @@ export const fetchShortUrl = async (url: string) => {
     method: "POST",
   })
 
-  const json = (await response.json()) as { shorturl: string }
+  const json = (await response.json()) as { shortenUrl: string }
 
-  return json.shorturl
+  return json.shortenUrl
 }
