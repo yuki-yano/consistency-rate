@@ -13,19 +13,23 @@ import {
   Divider,
   Flex,
   FormControl,
+  FormErrorMessage,
   FormLabel,
   Grid,
+  GridItem,
   Heading,
+  HStack,
   Icon,
   Input,
   Link,
   ListItem,
   Show,
   Text,
+  Textarea,
   UnorderedList,
   useClipboard,
 } from "@chakra-ui/react"
-import { Select as MultiSelect } from "chakra-react-select"
+import { Select as MultiSelect, MultiValue } from "chakra-react-select"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import { DevTools } from "jotai-devtools"
 import "jotai-devtools/styles.css"
@@ -152,11 +156,26 @@ const SpCalcButton: FC<{
   const pot = useAtomValue(potAtom)
   const setCalculationResult = useSetAtom(calculationResultAtom)
 
+  const isInvalid = pattern.patterns.some((p) => p.conditions.some((c) => c.invalid))
+
   const handleCalculate = () => {
+    if (isInvalid) {
+      return
+    }
     const result = calculateProbability(deck, card, pattern, trials, pot)
     setCalculationResult(result)
     onClick()
   }
+
+  useEffect(() => {
+    if (isInvalid || pattern.patterns.length === 0) {
+      return
+    }
+
+    const result = calculateProbability(deck, card, pattern, trials, pot)
+    setCalculationResult(result)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <Icon
@@ -164,7 +183,7 @@ const SpCalcButton: FC<{
       bgColor="gray.300"
       bottom={6}
       boxShadow="md"
-      color="gray.500"
+      color={isInvalid ? "gray.400" : "gray.600"}
       cursor="pointer"
       h={14}
       onClick={handleCalculate}
@@ -172,6 +191,7 @@ const SpCalcButton: FC<{
       position="fixed"
       right={6}
       rounded="full"
+      shadow="none"
       w={14}
     />
   )
@@ -183,7 +203,6 @@ const Deck: FC<{
 }> = ({ setTrials, trials }) => {
   const [deck, setDeck] = useAtom(deckAtom)
   const [loc, setLoc] = useAtom(locAtom)
-  const [tmpTrials, setTmpTrials] = useState(trials)
 
   return (
     <Card>
@@ -210,11 +229,22 @@ const Deck: FC<{
         <Box my={2}>
           <FormControl>
             <FormLabel>枚数</FormLabel>
-            <Input
-              onChange={(e) => setDeck({ ...deck, cardCount: Number(e.target.value) })}
-              placeholder="40"
-              type="text"
-              value={deck.cardCount.toString()}
+            <MultiSelect
+              chakraStyles={multiSelectStyles}
+              menuPortalTarget={document.body}
+              onChange={(selectedValue) => {
+                setDeck({ ...deck, cardCount: Number((selectedValue as { label: string; value: string }).value) })
+              }}
+              options={Array.from({ length: 41 }, (_, i) => i + 20).map((i) => ({
+                label: i.toString(),
+                value: i.toString(),
+              }))}
+              value={[
+                {
+                  label: deck.cardCount.toString(),
+                  value: deck.cardCount.toString(),
+                },
+              ]}
             />
           </FormControl>
         </Box>
@@ -222,11 +252,22 @@ const Deck: FC<{
         <Box my={2}>
           <FormControl>
             <FormLabel>初手枚数</FormLabel>
-            <Input
-              onChange={(e) => setDeck({ ...deck, firstHand: Number(e.target.value) })}
-              placeholder="5"
-              type="text"
-              value={deck.firstHand.toString()}
+            <MultiSelect
+              chakraStyles={multiSelectStyles}
+              menuPortalTarget={document.body}
+              onChange={(selectedValue) => {
+                setDeck({ ...deck, firstHand: Number((selectedValue as { label: string; value: string }).value) })
+              }}
+              options={Array.from({ length: 9 }, (_, i) => i + 1).map((i) => ({
+                label: i.toString(),
+                value: i.toString(),
+              }))}
+              value={[
+                {
+                  label: deck.firstHand.toString(),
+                  value: deck.firstHand.toString(),
+                },
+              ]}
             />
           </FormControl>
         </Box>
@@ -234,19 +275,24 @@ const Deck: FC<{
         <Box my={2}>
           <FormControl>
             <FormLabel>試行回数</FormLabel>
-            <Input
-              onBlur={() => setTrials(tmpTrials)}
-              onChange={(e) => {
-                const input = Number(e.target.value)
-
-                if (input > 1000000) {
-                  setTmpTrials(1000000)
-                } else {
-                  setTmpTrials(input)
-                }
+            <MultiSelect
+              chakraStyles={multiSelectStyles}
+              menuPortalTarget={document.body}
+              onChange={(selectedValue) => {
+                setTrials(Number((selectedValue as { label: string; value: string }).value))
               }}
-              type="text"
-              value={tmpTrials.toString()}
+              options={[
+                { label: "1000", value: "1000" },
+                { label: "10000", value: "10000" },
+                { label: "100000", value: "100000" },
+                { label: "1000000", value: "1000000" },
+              ]}
+              value={[
+                {
+                  label: trials.toString(),
+                  value: trials.toString(),
+                },
+              ]}
             />
           </FormControl>
         </Box>
@@ -390,10 +436,6 @@ const SuccessRates = forwardRef<HTMLDivElement>((_, ref) => {
   const labels = useAtomValue(labelAtom)
   const pattern = useAtomValue(patternAtom)
 
-  if (calculationResult == null) {
-    return <div ref={ref} />
-  }
-
   return (
     <>
       <Card ref={ref}>
@@ -402,18 +444,20 @@ const SuccessRates = forwardRef<HTMLDivElement>((_, ref) => {
             初動・パターン成立率
           </Heading>
 
-          <UnorderedList>
-            <ListItem ml={2}>
-              <Text fontSize="md">全体初動率: {calculationResult.overallProbability}%</Text>
-            </ListItem>
-            {Object.entries(calculationResult.patternSuccessRates).map(([patternId, rate]) => (
-              <ListItem key={patternId} ml={2}>
-                <Text fontSize="md">
-                  {pattern.patterns.find((p) => p.uid === patternId)?.name}: {rate}%
-                </Text>
+          {calculationResult != null && (
+            <UnorderedList>
+              <ListItem ml={2}>
+                <Text fontSize="md">全体初動率: {calculationResult.overallProbability}%</Text>
               </ListItem>
-            ))}
-          </UnorderedList>
+              {Object.entries(calculationResult.patternSuccessRates).map(([patternId, rate]) => (
+                <ListItem key={patternId} ml={2}>
+                  <Text fontSize="md">
+                    {pattern.patterns.find((p) => p.uid === patternId)?.name}: {rate}%
+                  </Text>
+                </ListItem>
+              ))}
+            </UnorderedList>
+          )}
         </CardBody>
       </Card>
 
@@ -423,19 +467,21 @@ const SuccessRates = forwardRef<HTMLDivElement>((_, ref) => {
             ラベル別成立率
           </Heading>
 
-          <UnorderedList>
-            {Object.entries(calculationResult.labelSuccessRates).map(([label, rate]) => {
-              const l = labels.labels.find((l) => l.uid === label)
+          {calculationResult != null && (
+            <UnorderedList>
+              {Object.entries(calculationResult.labelSuccessRates).map(([label, rate]) => {
+                const l = labels.labels.find((l) => l.uid === label)
 
-              return (
-                <ListItem key={label} ml={2}>
-                  <Text fontSize="md">
-                    {l?.name}: {rate}%
-                  </Text>
-                </ListItem>
-              )
-            })}
-          </UnorderedList>
+                return (
+                  <ListItem key={label} ml={2}>
+                    <Text fontSize="md">
+                      {l?.name}: {rate}%
+                    </Text>
+                  </ListItem>
+                )
+              })}
+            </UnorderedList>
+          )}
         </CardBody>
       </Card>
     </>
@@ -546,18 +592,22 @@ const CardItem: FC<{
             />
           </FormControl>
         </Box>
+
         <Box py={2}>
-          <FormControl>
-            <FormLabel>枚数</FormLabel>
-            <Input
-              onChange={(e) => {
-                updateCard({ ...card, count: Number(e.target.value) })
-              }}
-              placeholder="枚数"
-              type="number"
-              value={card.count.toString()}
-            />
-          </FormControl>
+          <MultiSelect
+            chakraStyles={multiSelectStyles}
+            menuPortalTarget={document.body}
+            onChange={(selectedValues) => {
+              updateCard({ ...card, count: Number((selectedValues as { label: string; value: string }).value) })
+            }}
+            options={Array.from({ length: 21 }, (_, i) => i).map((i) => ({ label: i.toString(), value: i.toString() }))}
+            value={[
+              {
+                label: card.count.toString(),
+                value: card.count.toString(),
+              },
+            ]}
+          />
         </Box>
       </CardBody>
     </Card>
@@ -573,6 +623,10 @@ const ConditionInput: FC<{
   const [patternState, setPattern] = useAtom(patternAtom)
   const patterns = patternState.patterns
   const pattern = patternState.patterns[patternIndex]
+
+  const [errorMessage, setErrorMessage] = useState<string | undefined>(
+    condition.uids.length === 0 ? "カードを選択してください" : undefined,
+  )
 
   const onChange = (updatedCondition: Condition) => {
     const newConditions = pattern.conditions.map((c, i) => {
@@ -601,12 +655,33 @@ const ConditionInput: FC<{
     setPattern({ patterns: newPatterns })
   }
 
+  const handleSelectionChange = (selectedValues: MultiValue<unknown>) => {
+    const uids = (selectedValues as Array<{ label: string; value: string }>).map((value) => value.value)
+    let newCondition = { ...condition, uids }
+
+    if (uids.length === 0) {
+      setErrorMessage("カードを選択してください")
+      newCondition = { ...newCondition, invalid: true }
+    } else {
+      setErrorMessage(undefined)
+      newCondition = { ...newCondition, invalid: false }
+    }
+
+    onChange({ ...newCondition })
+  }
+
   return (
     <Card shadow="xs">
       <CardBody>
-        <Icon as={VscClose} fontSize="xl" onClick={onDelete} />
+        <HStack>
+          <Icon as={VscClose} fontSize="xl" onClick={onDelete} />
 
-        <FormControl my={2}>
+          <Heading as="h3" fontSize="md">
+            条件{conditionIndex + 1}
+          </Heading>
+        </HStack>
+
+        <FormControl isInvalid={condition.invalid} my={2}>
           <FormLabel>カードを選択</FormLabel>
           <MultiSelect
             chakraStyles={multiSelectStyles}
@@ -614,10 +689,7 @@ const ConditionInput: FC<{
             isClearable={false}
             isMulti
             menuPortalTarget={document.body}
-            onChange={(selectedValues) => {
-              const uids = (selectedValues as Array<{ label: string; value: string }>).map((value) => value.value)
-              onChange({ ...condition, uids })
-            }}
+            onChange={handleSelectionChange}
             options={cards.map((card) => ({
               label: card.name,
               value: card.uid,
@@ -627,15 +699,27 @@ const ConditionInput: FC<{
               value: uid,
             }))}
           />
+          {errorMessage != null && <FormErrorMessage>{errorMessage}</FormErrorMessage>}
         </FormControl>
 
         <FormControl my={2}>
           <FormLabel>枚数</FormLabel>
-          <Input
-            disabled={condition.mode === "not_drawn"}
-            onChange={(e) => onChange({ ...condition, count: Number(e.target.value) })}
-            type="number"
-            value={condition.count.toString()}
+          <MultiSelect
+            chakraStyles={multiSelectStyles}
+            menuPortalTarget={document.body}
+            onChange={(selectedValue) => {
+              onChange({ ...condition, count: Number((selectedValue as { label: string; value: string }).value) })
+            }}
+            options={Array.from({ length: 6 }, (_, i) => i).map((i) => ({
+              label: i.toString(),
+              value: i.toString(),
+            }))}
+            value={[
+              {
+                label: condition.count.toString(),
+                value: condition.count.toString(),
+              },
+            ]}
           />
         </FormControl>
 
@@ -683,6 +767,7 @@ const PatternItem: FC<{ index: number }> = ({ index }) => {
   const addCondition = () => {
     const newCondition = {
       count: 1,
+      invalid: true,
       mode: "required",
       uids: [],
     }
@@ -699,6 +784,7 @@ const PatternItem: FC<{ index: number }> = ({ index }) => {
     const newPattern = {
       ...pattern,
       conditions: [...pattern.conditions],
+      name: `${pattern.name} - コピー`,
       uid: uuidv4(),
     }
     setPattern({ patterns: [...patterns, newPattern] })
@@ -734,6 +820,8 @@ const PatternItem: FC<{ index: number }> = ({ index }) => {
     }
   }
 
+  const isInvalid = pattern.conditions.some((condition) => condition.invalid)
+
   return (
     <Card my={4}>
       <CardBody>
@@ -760,11 +848,21 @@ const PatternItem: FC<{ index: number }> = ({ index }) => {
                     bg: "white",
                   }}
                 >
-                  <Box as="span" flex="1" textAlign="left">
-                    <Text as="b" color={active ? "gray.800" : "gray.500"} fontSize="lg">
+                  <Flex alignItems="flex-end" as="span" flex="1" gap={2} textAlign="left">
+                    <Text
+                      as="b"
+                      color={active ? "gray.800" : "gray.500"}
+                      fontSize="lg"
+                      textDecoration={isInvalid ? "line-through" : "none"} // 取り消し線の追加
+                    >
                       {pattern.name}
                     </Text>
-                  </Box>
+                    {isInvalid && (
+                      <Text as="b" color="red.400">
+                        条件が不正です
+                      </Text>
+                    )}
+                  </Flex>
                   <AccordionIcon />
                 </AccordionButton>
               </h2>
@@ -783,12 +881,14 @@ const PatternItem: FC<{ index: number }> = ({ index }) => {
               </Box>
 
               <AccordionPanel>
-                <Grid gap={4} templateColumns="repeat(auto-fill, minmax(300px, 1fr))">
-                  <PatternInput patternIndex={index} />
+                <Grid gap={4} templateColumns="repeat(auto-fill, minmax(250px, 1fr))">
+                  <GridItem rowSpan={3}>
+                    <PatternInput patternIndex={index} />
+                  </GridItem>
                   {pattern.conditions.map((_, conditionIndex) => (
-                    <Box key={conditionIndex}>
+                    <GridItem colSpan={1} key={conditionIndex}>
                       <ConditionInput conditionIndex={conditionIndex} patternIndex={index} />
-                    </Box>
+                    </GridItem>
                   ))}
                 </Grid>
 
@@ -813,6 +913,7 @@ const PatternInput: FC<{
   const labels = useAtomValue(labelAtom).labels
 
   const [tmpPatternName, setTempPatternName] = useState(pattern.name)
+  const [tmpMemo, setTempMemo] = useState(pattern.memo)
 
   return (
     <Box py={2}>
@@ -890,6 +991,25 @@ const PatternInput: FC<{
           />
         </FormControl>
       </Box>
+
+      <Box my={2}>
+        <FormControl>
+          <FormLabel>メモ</FormLabel>
+          <Textarea
+            onBlur={(e) => {
+              const newPatterns = patterns.map((p, i) => {
+                if (i === patternIndex) {
+                  return { ...p, memo: e.target.value }
+                }
+                return p
+              })
+              setPattern({ patterns: newPatterns })
+            }}
+            onChange={(e) => setTempMemo(e.target.value)}
+            value={tmpMemo}
+          />
+        </FormControl>
+      </Box>
     </Box>
   )
 }
@@ -911,6 +1031,7 @@ const PatternList: FC = () => {
       conditions: [],
       expanded: true,
       labels: [],
+      memo: "",
       name: `パターン${patterns.length + 1}`,
       priority: 1,
       uid: uuidv4(),
@@ -1006,12 +1127,35 @@ const CalculateButton: FC<{ trials: number }> = ({ trials }) => {
   const pot = useAtomValue(potAtom)
   const setCalculationResult = useSetAtom(calculationResultAtom)
 
+  useEffect(() => {
+    if (pattern.patterns.length === 0) {
+      return
+    }
+    const result = calculateProbability(deck, card, pattern, trials, pot)
+    setCalculationResult(result)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const handleCalculate = () => {
+    if (pattern.patterns.length === 0) {
+      return
+    }
     const result = calculateProbability(deck, card, pattern, trials, pot)
     setCalculationResult(result)
   }
 
-  return <Button onClick={handleCalculate}>計算</Button>
+  const isInvalid = pattern.patterns.some((p) => p.conditions.some((c) => c.invalid))
+
+  return (
+    <HStack>
+      <Button disabled={isInvalid} onClick={handleCalculate}>
+        計算
+      </Button>
+      <Text as="b" color="red.400" fontSize="sm">
+        {isInvalid ? "条件が不正です" : ""}
+      </Text>
+    </HStack>
+  )
 }
 
 const domNode = document.getElementById("root")

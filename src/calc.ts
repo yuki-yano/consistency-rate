@@ -19,10 +19,7 @@ const checkPatternConditions = (
     }
 
     if (condition.mode === "leave_deck") {
-      const remainingCountInDeck = shuffledDeck.reduce((count, card) => {
-        return condition.uids.includes(card.uid) ? count + 1 : count
-      }, 0)
-
+      const remainingCountInDeck = shuffledDeck.filter((card) => condition.uids.includes(card.uid)).length
       return remainingCountInDeck >= condition.count
     }
 
