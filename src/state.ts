@@ -21,6 +21,7 @@ export type PatternMode = "leave_deck" | "not_drawn" | "required"
 
 export type Condition = {
   count: number
+  invalid: boolean
   mode: PatternMode
   uids: Array<string>
 }
@@ -32,6 +33,7 @@ export type Pattern = {
   labels: Array<{
     uid: string
   }>
+  memo: string
   name: string
   priority: number
   uid: string
