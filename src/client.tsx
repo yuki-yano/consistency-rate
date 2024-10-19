@@ -1,3 +1,6 @@
+import type { MultiValue } from "chakra-react-select"
+import type { FC } from "react"
+
 import {
   Accordion,
   AccordionButton,
@@ -29,32 +32,37 @@ import {
   UnorderedList,
   useClipboard,
 } from "@chakra-ui/react"
-import { Select as MultiSelect, MultiValue } from "chakra-react-select"
+import { Select as MultiSelect } from "chakra-react-select"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
+import { useAtomCallback } from "jotai/utils"
 import { DevTools } from "jotai-devtools"
 import "jotai-devtools/styles.css"
-import { type FC, forwardRef, useEffect, useRef, useState } from "react"
+import { focusAtom } from "jotai-optics"
+import { forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 import { LuCalculator, LuCheckCircle2, LuCircle, LuCopy, LuCopyCheck } from "react-icons/lu"
 import { VscArrowCircleDown, VscArrowCircleUp, VscClose, VscCopy } from "react-icons/vsc"
 import { v4 as uuidv4 } from "uuid"
 
+import type { CardData, Condition, Pattern, PatternMode } from "./state"
+
 import { calculateProbability } from "./calc"
 import { fetchShortUrl } from "./fetch"
-import {
-  calculationResultAtom,
-  type CardData,
-  cardsAtom,
-  type Condition,
-  deckAtom,
-  labelAtom,
-  locAtom,
-  type Pattern,
-  patternAtom,
-  type PatternMode,
-  potAtom,
-} from "./state"
+import { calculationResultAtom, cardsAtom, deckAtom, labelAtom, locAtom, patternAtom, potAtom } from "./state"
 import { multiSelectStyles, theme } from "./theme"
+
+const useCard = (uid: string) => {
+  const cardItemAtom = useMemo(
+    () => focusAtom(cardsAtom, (optic) => optic.prop("cards").find((card) => card.uid === uid)),
+    [uid],
+  )
+  return useAtom(cardItemAtom) as [CardData, (card: CardData) => void]
+}
+
+const usePattern = (index: number) => {
+  const patternItemAtom = useMemo(() => focusAtom(patternAtom, (optic) => optic.prop("patterns").at(index)), [index])
+  return useAtom(patternItemAtom) as [Pattern, (pattern: Pattern) => void]
+}
 
 const Root = () => {
   return (
@@ -151,6 +159,44 @@ const ShortUrlGenerator: FC = () => {
   )
 }
 
+const CalculateButton: FC<{ trials: number }> = ({ trials }) => {
+  const deck = useAtomValue(deckAtom)
+  const card = useAtomValue(cardsAtom)
+  const pattern = useAtomValue(patternAtom)
+  const pot = useAtomValue(potAtom)
+  const setCalculationResult = useSetAtom(calculationResultAtom)
+
+  useEffect(() => {
+    if (pattern.patterns.length === 0) {
+      return
+    }
+    const result = calculateProbability(deck, card, pattern, trials, pot)
+    setCalculationResult(result)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleCalculate = () => {
+    if (pattern.patterns.length === 0) {
+      return
+    }
+    const result = calculateProbability(deck, card, pattern, trials, pot)
+    setCalculationResult(result)
+  }
+
+  const isInvalid = pattern.patterns.some((p) => p.conditions.some((c) => c.invalid))
+
+  return (
+    <HStack>
+      <Button disabled={isInvalid} onClick={handleCalculate}>
+        計算
+      </Button>
+      <Text as="b" color="red.400" fontSize="sm">
+        {isInvalid ? "条件が不正です" : ""}
+      </Text>
+    </HStack>
+  )
+}
+
 const SpCalcButton: FC<{
   onClick: () => void
   trials: number
@@ -202,12 +248,8 @@ const SpCalcButton: FC<{
   )
 }
 
-const Deck: FC<{
-  setTrials: (trials: number) => void
-  trials: number
-}> = ({ setTrials, trials }) => {
+const Deck: FC<{ setTrials: (trials: number) => void; trials: number }> = ({ setTrials, trials }) => {
   const [deck, setDeck] = useAtom(deckAtom)
-  const [loc, setLoc] = useAtom(locAtom)
 
   return (
     <Card>
@@ -216,20 +258,7 @@ const Deck: FC<{
           デッキ情報
         </Heading>
 
-        <Box my={2}>
-          <FormControl>
-            <FormLabel>デッキ名</FormLabel>
-            <Input
-              onChange={(e) => {
-                setLoc((prev) => ({
-                  ...prev,
-                  searchParams: new URLSearchParams([["deckName", encodeURIComponent(e.target.value)]]),
-                }))
-              }}
-              value={decodeURIComponent(loc.searchParams?.get("deckName") ?? "")}
-            />
-          </FormControl>
-        </Box>
+        <DeckName />
 
         <Box my={2}>
           <FormControl>
@@ -303,6 +332,27 @@ const Deck: FC<{
         </Box>
       </CardBody>
     </Card>
+  )
+}
+
+const DeckName: FC = () => {
+  const [loc, setLoc] = useAtom(locAtom)
+
+  return (
+    <Box my={2}>
+      <FormControl>
+        <FormLabel>デッキ名</FormLabel>
+        <Input
+          onChange={(e) => {
+            setLoc((prev) => ({
+              ...prev,
+              searchParams: new URLSearchParams([["deckName", encodeURIComponent(e.target.value)]]),
+            }))
+          }}
+          value={decodeURIComponent(loc.searchParams?.get("deckName") ?? "")}
+        />
+      </FormControl>
+    </Box>
   )
 }
 
@@ -494,88 +544,112 @@ const SuccessRates = forwardRef<HTMLDivElement>((_, ref) => {
 })
 
 const CardList: FC = () => {
-  const [cardState, setCardState] = useAtom(cardsAtom)
-  const cards = cardState.cards
+  const cards = useAtomValue(cardsAtom).cards
 
-  const handleClick = () => {
-    const newCards = cards.concat({
-      count: 1,
-      name: `新規カード${cards.length + 1}`,
-      uid: uuidv4(),
-    })
-    setCardState({ cards: newCards })
-  }
+  const addCard = useAtomCallback(
+    useCallback((get, set) => {
+      const cards = get(cardsAtom).cards
+      const newCards = cards.concat({
+        count: 1,
+        name: `カード${cards.length + 1}`,
+        uid: uuidv4(),
+      })
+      set(cardsAtom, {
+        cards: newCards,
+        length: newCards.length,
+      })
+    }, []),
+  )
 
   return (
     <Box>
-      <Button mb={4} onClick={handleClick}>
+      <Button mb={4} onClick={() => addCard()}>
         カードを追加
       </Button>
 
       <Grid gap={4} templateColumns="repeat(auto-fill, minmax(300px, 1fr))">
         {cards.map((card, index) => (
-          <CardItem index={index} key={card.uid} />
+          <CardItem index={index} key={card.uid} uid={card.uid} />
         ))}
       </Grid>
     </Box>
   )
 }
 
-const CardItem: FC<{
-  index: number
-}> = ({ index }) => {
-  const [cardState, setCardState] = useAtom(cardsAtom)
-  const cards = cardState.cards
-  const card = cards[index]
-  const [patternState, setPatternState] = useAtom(patternAtom)
-  const patterns = patternState.patterns
+const CardItem: FC<{ index: number; uid: string }> = memo(({ index, uid }) => {
+  const [card, setCard] = useCard(uid)
+  const [tmpName, setTmpName] = useState(card.name)
 
-  const [tmpName, setTempName] = useState(card.name)
+  const updateCardName = useCallback(
+    (name: string) => {
+      setCard({ ...card, name })
+    },
+    [card, setCard],
+  )
 
-  const handleDeleteCard = (uid: string) => {
-    const newCards = cards.filter((c) => c.uid !== uid)
-    setCardState({ cards: newCards })
+  const updateCardCount = useCallback(
+    (count: number) => {
+      setCard({ ...card, count })
+    },
+    [card, setCard],
+  )
 
-    const updatedPatterns = patterns.map((pattern) => {
-      const updatedConditions = pattern.conditions.map((condition) => ({
-        ...condition,
-        uids: condition.uids.filter((id) => id !== uid),
-      }))
-      return { ...pattern, conditions: updatedConditions }
-    })
-    setPatternState({ patterns: updatedPatterns })
-  }
+  const handleDeleteCard = useAtomCallback(
+    useCallback((get, set, uid: string) => {
+      const cards = get(cardsAtom).cards
+      const newCards = cards.filter((c) => c.uid !== uid)
+      set(cardsAtom, {
+        cards: newCards,
+        length: newCards.length,
+      })
 
-  const moveCardUp = (index: number) => {
-    if (index > 0) {
-      const newCards = [...cards]
-      const [movedCard] = newCards.splice(index, 1)
-      newCards.splice(index - 1, 0, movedCard)
-      setCardState({ cards: newCards })
-    }
-  }
+      const patterns = get(patternAtom).patterns
+      const updatedPatterns = patterns.map((pattern) => {
+        const updatedConditions = pattern.conditions.map((condition) => ({
+          ...condition,
+          uids: condition.uids.filter((id) => id !== uid),
+        }))
+        return { ...pattern, conditions: updatedConditions }
+      })
+      set(patternAtom, {
+        length: updatedPatterns.length,
+        patterns: updatedPatterns,
+      })
+    }, []),
+  )
 
-  const moveCardDown = (index: number) => {
-    if (index < cards.length - 1) {
-      const newCards = [...cards]
-      const [movedCard] = newCards.splice(index, 1)
-      newCards.splice(index + 1, 0, movedCard)
-      setCardState({ cards: newCards })
-    }
-  }
-
-  const updateCard = (updatedCard: CardData) => {
-    const newCards = cards.map((c) => {
-      if (c.uid === updatedCard.uid) {
-        return updatedCard
+  const moveCardUp = useAtomCallback(
+    useCallback((get, set, index: number) => {
+      const cards = get(cardsAtom).cards
+      if (index > 0) {
+        const newCards = [...cards]
+        const [movedCard] = newCards.splice(index, 1)
+        newCards.splice(index - 1, 0, movedCard)
+        set(cardsAtom, {
+          cards: newCards,
+          length: newCards.length,
+        })
       }
-      return c
-    })
-    setCardState({ cards: newCards })
-  }
+    }, []),
+  )
+
+  const moveCardDown = useAtomCallback(
+    useCallback((get, set, index: number) => {
+      const cards = get(cardsAtom).cards
+      if (index < cards.length - 1) {
+        const newCards = [...cards]
+        const [movedCard] = newCards.splice(index, 1)
+        newCards.splice(index + 1, 0, movedCard)
+        set(cardsAtom, {
+          cards: newCards,
+          length: newCards.length,
+        })
+      }
+    }, []),
+  )
 
   return (
-    <Card key={card.uid} py={2}>
+    <Card py={2}>
       <CardBody>
         <Flex gap={3} mb={2}>
           <Icon as={VscClose} color="gray.600" fontSize="xl" onClick={() => handleDeleteCard(card.uid)} />
@@ -588,9 +662,9 @@ const CardItem: FC<{
             <FormLabel>カード名</FormLabel>
             <Input
               onBlur={() => {
-                updateCard({ ...card, name: tmpName })
+                updateCardName(tmpName)
               }}
-              onChange={(e) => setTempName(e.target.value)}
+              onChange={(e) => setTmpName(e.target.value)}
               placeholder="カード名"
               type="text"
               value={tmpName}
@@ -603,9 +677,12 @@ const CardItem: FC<{
             chakraStyles={multiSelectStyles}
             menuPortalTarget={document.body}
             onChange={(selectedValues) => {
-              updateCard({ ...card, count: Number((selectedValues as { label: string; value: string }).value) })
+              updateCardCount(Number((selectedValues as { label: string; value: string }).value))
             }}
-            options={Array.from({ length: 21 }, (_, i) => i).map((i) => ({ label: i.toString(), value: i.toString() }))}
+            options={Array.from({ length: 21 }, (_, i) => i).map((i) => ({
+              label: i.toString(),
+              value: i.toString(),
+            }))}
             value={[
               {
                 label: card.count.toString(),
@@ -617,24 +694,18 @@ const CardItem: FC<{
       </CardBody>
     </Card>
   )
-}
+})
 
 const ConditionInput: FC<{
   conditionIndex: number
   patternIndex: number
 }> = ({ conditionIndex, patternIndex }) => {
-  const cards = useAtomValue(cardsAtom).cards
   const condition = useAtomValue(patternAtom).patterns[patternIndex].conditions[conditionIndex]
   const [patternState, setPattern] = useAtom(patternAtom)
   const patterns = patternState.patterns
-  const pattern = patternState.patterns[patternIndex]
-
-  const [errorMessage, setErrorMessage] = useState<string | undefined>(
-    condition.uids.length === 0 ? "カードを選択してください" : undefined,
-  )
 
   const onChange = (updatedCondition: Condition) => {
-    const newConditions = pattern.conditions.map((c, i) => {
+    const newConditions = patterns[patternIndex].conditions.map((c, i) => {
       if (i === conditionIndex) {
         return updatedCondition
       }
@@ -646,33 +717,24 @@ const ConditionInput: FC<{
       }
       return p
     })
-    setPattern({ patterns: newPatterns })
+    setPattern({
+      length: newPatterns.length,
+      patterns: newPatterns,
+    })
   }
 
   const onDelete = () => {
-    const newConditions = pattern.conditions.filter((_, i) => i !== conditionIndex)
+    const newConditions = patterns[patternIndex].conditions.filter((_, i) => i !== conditionIndex)
     const newPatterns = patterns.map((p, i) => {
       if (i === patternIndex) {
         return { ...p, conditions: newConditions }
       }
       return p
     })
-    setPattern({ patterns: newPatterns })
-  }
-
-  const handleSelectionChange = (selectedValues: MultiValue<unknown>) => {
-    const uids = (selectedValues as Array<{ label: string; value: string }>).map((value) => value.value)
-    let newCondition = { ...condition, uids }
-
-    if (uids.length === 0) {
-      setErrorMessage("カードを選択してください")
-      newCondition = { ...newCondition, invalid: true }
-    } else {
-      setErrorMessage(undefined)
-      newCondition = { ...newCondition, invalid: false }
-    }
-
-    onChange({ ...newCondition })
+    setPattern({
+      length: newPatterns.length,
+      patterns: newPatterns,
+    })
   }
 
   return (
@@ -686,26 +748,7 @@ const ConditionInput: FC<{
           </Heading>
         </HStack>
 
-        <FormControl isInvalid={condition.invalid} my={2}>
-          <FormLabel>カードを選択</FormLabel>
-          <MultiSelect
-            chakraStyles={multiSelectStyles}
-            closeMenuOnSelect={false}
-            isClearable={false}
-            isMulti
-            menuPortalTarget={document.body}
-            onChange={handleSelectionChange}
-            options={cards.map((card) => ({
-              label: card.name,
-              value: card.uid,
-            }))}
-            value={condition.uids.map((uid) => ({
-              label: cards.find((card) => card.uid === uid)?.name,
-              value: uid,
-            }))}
-          />
-          {errorMessage != null && <FormErrorMessage>{errorMessage}</FormErrorMessage>}
-        </FormControl>
+        <SelectCard condition={condition} onChange={onChange} />
 
         <FormControl my={2}>
           <FormLabel>枚数</FormLabel>
@@ -762,90 +805,205 @@ const ConditionInput: FC<{
   )
 }
 
+const SelectCard: FC<{
+  condition: Condition
+  onChange: (updatedCondition: Condition) => void
+}> = ({ condition, onChange }) => {
+  const cards = useAtomValue(cardsAtom).cards
+  const [errorMessage, setErrorMessage] = useState<string | undefined>(
+    condition.uids.length === 0 ? "カードを選択してください" : undefined,
+  )
+
+  const handleSelectionChange = (selectedValues: MultiValue<unknown>) => {
+    const uids = (selectedValues as Array<{ label: string; value: string }>).map((value) => value.value)
+    let newCondition = { ...condition, uids }
+
+    if (uids.length === 0) {
+      setErrorMessage("カードを選択してください")
+      newCondition = { ...newCondition, invalid: true }
+    } else {
+      setErrorMessage(undefined)
+      newCondition = { ...newCondition, invalid: false }
+    }
+
+    onChange({ ...newCondition })
+  }
+
+  return (
+    <FormControl isInvalid={condition.invalid}>
+      <FormLabel>カードを選択</FormLabel>
+      <MultiSelect
+        chakraStyles={multiSelectStyles}
+        closeMenuOnSelect={false}
+        isClearable={false}
+        isMulti
+        menuPortalTarget={document.body}
+        onChange={handleSelectionChange}
+        options={cards.map((card) => ({
+          label: card.name,
+          value: card.uid,
+        }))}
+        value={condition.uids.map((uid) => ({
+          label: cards.find((card) => card.uid === uid)?.name,
+          value: uid,
+        }))}
+      />
+      {errorMessage != null && <FormErrorMessage>{errorMessage}</FormErrorMessage>}
+    </FormControl>
+  )
+}
+
 const PatternItem: FC<{ index: number }> = ({ index }) => {
-  const labels = useAtomValue(labelAtom).labels
-  const [patternState, setPattern] = useAtom(patternAtom)
-  const patterns = patternState.patterns
-  const pattern = patternState.patterns[index]
-  const [active, setActive] = useState(pattern.active)
+  const [pattern] = usePattern(index)
+  const [active, setActive] = useState(pattern?.active)
 
-  const addCondition = () => {
-    const newCondition = {
-      count: 1,
-      invalid: true,
-      mode: "required",
-      uids: [],
-    }
-    const newPatterns = patterns.map((p, i) => {
-      if (i === index) {
-        return { ...p, conditions: [...p.conditions, newCondition] }
+  const [expanded, setExpanded] = useState(false)
+
+  const addCondition = useAtomCallback(
+    useCallback(
+      (get, set) => {
+        const newCondition = {
+          count: 1,
+          invalid: true,
+          mode: "required",
+          uids: [],
+        }
+        const patterns = get(patternAtom)
+        const newPatterns = patterns.patterns.map((p, i) => {
+          if (i === index) {
+            return { ...p, conditions: [...p.conditions, newCondition] }
+          }
+          return p
+        }) as Array<Pattern>
+        console.log(newPatterns)
+        set(patternAtom, {
+          length: newPatterns.length,
+          patterns: newPatterns,
+        })
+      },
+      [index],
+    ),
+  )
+
+  const deletePattern = useAtomCallback(
+    useCallback(
+      (get, set) => {
+        const patterns = get(patternAtom).patterns
+        set(patternAtom, {
+          length: patterns.length - 1,
+          patterns: patterns.filter((_, i) => i !== index),
+        })
+      },
+      [index],
+    ),
+  )
+
+  const duplicatePattern = useAtomCallback(
+    useCallback(
+      (get, set) => {
+        const patterns = get(patternAtom).patterns
+        const newPattern = {
+          ...pattern!,
+          active: true,
+          expanded: true,
+          name: `${pattern!.name} - コピー`,
+          uid: uuidv4(),
+        }
+        set(patternAtom, {
+          length: patterns.length + 1,
+          patterns: [...patterns, newPattern],
+        })
+      },
+      [pattern],
+    ),
+  )
+
+  const handleToggleActive = useAtomCallback(
+    useCallback(
+      (get, set, index: number) => {
+        const patterns = get(patternAtom).patterns
+        const newPatterns = patterns.map((p, i) => {
+          if (i === index) {
+            return { ...p, active: active != null ? !active : true }
+          }
+          return p
+        })
+        set(patternAtom, {
+          length: newPatterns.length,
+          patterns: newPatterns,
+        })
+        setActive((prev) => (prev != null ? !prev : true))
+      },
+      [active],
+    ),
+  )
+
+  const movePatternUp = useAtomCallback(
+    useCallback((get, set, index: number) => {
+      const patterns = get(patternAtom).patterns
+      if (index > 0) {
+        const newPatterns = [...patterns]
+        const [movedPattern] = newPatterns.splice(index, 1)
+        newPatterns.splice(index - 1, 0, movedPattern)
+        set(patternAtom, {
+          length: newPatterns.length,
+          patterns: newPatterns,
+        })
       }
-      return p
-    }) as Array<Pattern>
-    setPattern({ patterns: newPatterns })
-  }
+    }, []),
+  )
 
-  const duplicatePattern = () => {
-    const newPattern = {
-      ...pattern,
-      conditions: [...pattern.conditions],
-      name: `${pattern.name} - コピー`,
-      uid: uuidv4(),
-    }
-    setPattern({ patterns: [...patterns, newPattern] })
-  }
-
-  const handleToggleActive = () => {
-    const newActiveState = !active
-    setActive(newActiveState)
-    const newPatterns = patterns.map((p, i) => {
-      if (i === index) {
-        return { ...p, active: newActiveState }
+  const movePatternDown = useAtomCallback(
+    useCallback((get, set, index: number) => {
+      const patterns = get(patternAtom).patterns
+      if (index < patterns.length - 1) {
+        const newPatterns = [...patterns]
+        const [movedPattern] = newPatterns.splice(index, 1)
+        newPatterns.splice(index + 1, 0, movedPattern)
+        set(patternAtom, {
+          length: newPatterns.length,
+          patterns: newPatterns,
+        })
       }
-      return p
-    })
-    setPattern({ patterns: newPatterns })
-  }
+    }, []),
+  )
 
-  const movePatternUp = () => {
-    if (index > 0) {
-      const newPatterns = [...patterns]
-      const [movedPattern] = newPatterns.splice(index, 1)
-      newPatterns.splice(index - 1, 0, movedPattern)
-      setPattern({ patterns: newPatterns })
-    }
-  }
-
-  const movePatternDown = () => {
-    if (index < patterns.length - 1) {
-      const newPatterns = [...patterns]
-      const [movedPattern] = newPatterns.splice(index, 1)
-      newPatterns.splice(index + 1, 0, movedPattern)
-      setPattern({ patterns: newPatterns })
-    }
-  }
-
-  const isInvalid = pattern.conditions.some((condition) => condition.invalid)
+  const isInvalid = pattern?.conditions.some((condition) => condition.invalid)
 
   return (
     <Card my={4}>
       <CardBody>
         <Flex gap={3} mb={2}>
+          <Icon as={VscClose} color="gray.600" fontSize="xl" onClick={() => deletePattern()} />
+          <Icon as={VscCopy} color="gray.600" fontSize="xl" onClick={duplicatePattern} />
           <Icon
-            as={VscClose}
+            as={VscArrowCircleUp}
             color="gray.600"
             fontSize="xl"
-            onClick={() => setPattern({ patterns: patterns.filter((_, i) => i !== index) })}
+            onClick={() => {
+              movePatternUp(index)
+            }}
           />
-          <Icon as={VscCopy} color="gray.600" fontSize="xl" onClick={duplicatePattern} />
-          <Icon as={VscArrowCircleUp} color="gray.600" fontSize="xl" onClick={movePatternUp} />
-          <Icon as={VscArrowCircleDown} color="gray.600" fontSize="xl" onClick={movePatternDown} />
+          <Icon
+            as={VscArrowCircleDown}
+            color="gray.600"
+            fontSize="xl"
+            onClick={() => {
+              movePatternDown(index)
+            }}
+          />
         </Flex>
 
         <Flex align="center" gap={1}>
-          <Icon as={active ? LuCheckCircle2 : LuCircle} fontSize="xl" onClick={handleToggleActive} />
+          <Icon
+            as={active ? LuCheckCircle2 : LuCircle}
+            fontSize="xl"
+            onClick={() => {
+              handleToggleActive(index)
+            }}
+          />
 
-          <Accordion allowToggle w="full">
+          <Accordion allowToggle index={expanded ? 0 : -1} onChange={() => setExpanded(!expanded)} w="full">
             <AccordionItem border="none">
               <h2>
                 <AccordionButton
@@ -858,7 +1016,7 @@ const PatternItem: FC<{ index: number }> = ({ index }) => {
                       as="b"
                       color={active ? "gray.800" : "gray.500"}
                       fontSize="lg"
-                      textDecoration={isInvalid ? "line-through" : "none"} // 取り消し線の追加
+                      textDecoration={isInvalid ? "line-through" : "none"}
                     >
                       {pattern.name}
                     </Text>
@@ -873,33 +1031,31 @@ const PatternItem: FC<{ index: number }> = ({ index }) => {
               </h2>
 
               <Box ml={4}>
-                <Text color="gray.600" fontSize="md">
-                  ラベル:&nbsp;
-                  {pattern.labels
-                    .map((label) => labels.find((l) => l.uid === label.uid)?.name)
-                    .filter(Boolean)
-                    .join(", ")}
-                </Text>
+                <PatternItemLabels patternIndex={index} />
                 <Text color="gray.600" fontSize="md">
                   優先度: {pattern.priority}
                 </Text>
               </Box>
 
               <AccordionPanel>
-                <Grid gap={4} templateColumns="repeat(auto-fill, minmax(250px, 1fr))">
-                  <GridItem rowSpan={3}>
-                    <PatternInput patternIndex={index} />
-                  </GridItem>
-                  {pattern.conditions.map((_, conditionIndex) => (
-                    <GridItem colSpan={1} key={conditionIndex}>
-                      <ConditionInput conditionIndex={conditionIndex} patternIndex={index} />
-                    </GridItem>
-                  ))}
-                </Grid>
+                {expanded && (
+                  <>
+                    <Grid gap={4} templateColumns="repeat(auto-fill, minmax(250px, 1fr))">
+                      <GridItem rowSpan={3}>
+                        <PatternInput patternIndex={index} />
+                      </GridItem>
+                      {pattern.conditions.map((_, conditionIndex) => (
+                        <GridItem colSpan={1} key={conditionIndex}>
+                          <ConditionInput conditionIndex={conditionIndex} patternIndex={index} />
+                        </GridItem>
+                      ))}
+                    </Grid>
 
-                <Button mt={4} onClick={addCondition}>
-                  条件を追加
-                </Button>
+                    <Button mt={4} onClick={addCondition}>
+                      条件を追加
+                    </Button>
+                  </>
+                )}
               </AccordionPanel>
             </AccordionItem>
           </Accordion>
@@ -909,126 +1065,232 @@ const PatternItem: FC<{ index: number }> = ({ index }) => {
   )
 }
 
-const PatternInput: FC<{
-  patternIndex: number
-}> = ({ patternIndex }) => {
-  const [patternState, setPattern] = useAtom(patternAtom)
-  const patterns = patternState.patterns
-  const pattern = patternState.patterns[patternIndex]
+const PatternItemLabels: FC<{ patternIndex: number }> = ({ patternIndex }) => {
+  const pattern = useAtomValue(patternAtom).patterns[patternIndex]
   const labels = useAtomValue(labelAtom).labels
 
-  const [tmpPatternName, setTempPatternName] = useState(pattern.name)
-  const [tmpMemo, setTempMemo] = useState(pattern.memo)
+  return (
+    <Text color="gray.600" fontSize="md">
+      ラベル:&nbsp;
+      {pattern.labels
+        .map((label) => labels.find((l) => l.uid === label.uid)?.name)
+        .filter(Boolean)
+        .join(", ")}
+    </Text>
+  )
+}
+
+const PatternNameInput: FC<{ patternIndex: number }> = ({ patternIndex }) => {
+  const [pattern] = usePattern(patternIndex)
+  const [tmpName, setTmpName] = useState(pattern.name)
+
+  const updateName = useAtomCallback(
+    useCallback(
+      (get, set, name: string) => {
+        const patterns = get(patternAtom)
+        const newPatterns = patterns.patterns.map((p, i) => {
+          if (i === patternIndex) {
+            return { ...p, name }
+          }
+          return p
+        })
+
+        set(patternAtom, {
+          length: newPatterns.length,
+          patterns: newPatterns,
+        })
+      },
+      [patternIndex],
+    ),
+  )
+
+  const handleBlur = () => {
+    updateName(tmpName)
+  }
 
   return (
+    <Box my={2}>
+      <FormControl>
+        <FormLabel>パターン名</FormLabel>
+        <Input onBlur={handleBlur} onChange={(e) => setTmpName(e.target.value)} value={tmpName} />
+      </FormControl>
+    </Box>
+  )
+}
+
+const PatternLabelInput: FC<{ patternIndex: number }> = ({ patternIndex }) => {
+  const [patternState] = useAtom(patternAtom)
+  const labels = useAtomValue(labelAtom).labels
+  const currentLabels = patternState.patterns[patternIndex].labels
+
+  const updateLabels = useAtomCallback((_, set) => (selectedValues: Array<{ label: string; value: string }>) => {
+    const newLabels = selectedValues.map((value) => ({
+      uid: value.value,
+    }))
+    const newPatterns = patternState.patterns.map((p, i) => {
+      if (i === patternIndex) {
+        return { ...p, labels: newLabels }
+      }
+      return p
+    })
+    set(patternAtom, {
+      length: newPatterns.length,
+      patterns: newPatterns,
+    })
+  })
+
+  return (
+    <Box my={2}>
+      <FormControl>
+        <FormLabel>ラベル</FormLabel>
+        <MultiSelect
+          chakraStyles={multiSelectStyles}
+          closeMenuOnSelect={false}
+          isClearable={false}
+          isMulti
+          menuPortalTarget={document.body}
+          onChange={(selectedValues) => {
+            updateLabels()(selectedValues as Array<{ label: string; value: string }>)
+          }}
+          options={labels.map((label) => ({
+            label: label.name,
+            value: label.uid,
+          }))}
+          value={currentLabels.map((label) => ({
+            label: labels.find((l) => l.uid === label.uid)?.name,
+            value: label.uid,
+          }))}
+        />
+      </FormControl>
+    </Box>
+  )
+}
+
+const PatternPriorityInput: FC<{
+  patternIndex: number
+}> = ({ patternIndex }) => {
+  const [pattern] = usePattern(patternIndex)
+  const priority = pattern.priority
+  const updatePriority = useAtomCallback(
+    useCallback(
+      (get, set, priority: number) => {
+        const patterns = get(patternAtom)
+        const newPatterns = patterns.patterns.map((p, i) => {
+          if (i === patternIndex) {
+            return { ...p, priority }
+          }
+          return p
+        })
+
+        set(patternAtom, {
+          length: newPatterns.length,
+          patterns: newPatterns,
+        })
+      },
+      [patternIndex],
+    ),
+  )
+
+  return (
+    <Box my={2}>
+      <FormControl>
+        <FormLabel>優先度</FormLabel>
+        <MultiSelect
+          chakraStyles={multiSelectStyles}
+          menuPortalTarget={document.body}
+          onChange={(selectedValue) => {
+            updatePriority(Number((selectedValue as { label: string; value: string }).value))
+          }}
+          options={Array.from({ length: 10 }, (_, i) => i + 1).map((i) => ({
+            label: i.toString(),
+            value: i.toString(),
+          }))}
+          value={[
+            {
+              label: priority.toString(),
+              value: priority.toString(),
+            },
+          ]}
+        />
+      </FormControl>
+    </Box>
+  )
+}
+
+const PatternMemoInput: FC<{ patternIndex: number }> = ({ patternIndex }) => {
+  const [patternState, setPattern] = useAtom(patternAtom)
+  const pattern = patternState.patterns[patternIndex]
+  const [tmpMemo, setTmpMemo] = useState(pattern.memo)
+
+  const handleBlur = (e: React.FocusEvent<HTMLTextAreaElement>) => {
+    const newPatterns = patternState.patterns.map((p, i) => {
+      if (i === patternIndex) {
+        return { ...p, memo: e.target.value }
+      }
+      return p
+    })
+    setPattern({
+      length: newPatterns.length,
+      patterns: newPatterns,
+    })
+  }
+
+  return (
+    <Box my={2}>
+      <FormControl>
+        <FormLabel>メモ</FormLabel>
+        <Textarea onBlur={handleBlur} onChange={(e) => setTmpMemo(e.target.value)} value={tmpMemo} />
+      </FormControl>
+    </Box>
+  )
+}
+
+const PatternInput: FC<{ patternIndex: number }> = ({ patternIndex }) => {
+  return (
     <Box py={2}>
-      <Box my={2}>
-        <FormControl>
-          <FormLabel>パターン名</FormLabel>
-          <Input
-            onBlur={(e) => {
-              const newPatterns = patterns.map((p, i) => {
-                if (i === patternIndex) {
-                  return { ...p, name: e.target.value }
-                }
-                return p
-              })
-              setPattern({ patterns: newPatterns })
-            }}
-            onChange={(e) => setTempPatternName(e.target.value)}
-            type="text"
-            value={tmpPatternName}
-          />
-        </FormControl>
-      </Box>
-
-      <Box my={2}>
-        <FormControl>
-          <FormLabel>ラベル</FormLabel>
-          <MultiSelect
-            chakraStyles={multiSelectStyles}
-            closeMenuOnSelect={false}
-            isClearable={false}
-            isMulti
-            menuPortalTarget={document.body}
-            onChange={(selectedValues) => {
-              const newLabels = (selectedValues as Array<{ label: string; value: string }>).map((value) => ({
-                uid: value.value,
-              }))
-              const newPatterns = patterns.map((p, i) => {
-                if (i === patternIndex) {
-                  return { ...p, labels: newLabels }
-                }
-                return p
-              })
-              setPattern({ patterns: newPatterns })
-            }}
-            options={labels.map((label) => ({
-              label: label.name,
-              value: label.uid,
-            }))}
-            value={pattern.labels.map((label) => ({
-              label: labels.find((l) => l.uid === label.uid)?.name,
-              value: label.uid,
-            }))}
-          />
-        </FormControl>
-      </Box>
-
-      <Box my={2}>
-        <FormControl>
-          <FormLabel>優先度</FormLabel>
-          <Input
-            onChange={(e) => {
-              const newPatterns = patterns.map((p, i) => {
-                if (i === patternIndex) {
-                  return {
-                    ...p,
-                    priority: Number(e.target.value),
-                  }
-                }
-                return p
-              })
-              setPattern({ patterns: newPatterns })
-            }}
-            type="number"
-            value={pattern.priority.toString()}
-          />
-        </FormControl>
-      </Box>
-
-      <Box my={2}>
-        <FormControl>
-          <FormLabel>メモ</FormLabel>
-          <Textarea
-            onBlur={(e) => {
-              const newPatterns = patterns.map((p, i) => {
-                if (i === patternIndex) {
-                  return { ...p, memo: e.target.value }
-                }
-                return p
-              })
-              setPattern({ patterns: newPatterns })
-            }}
-            onChange={(e) => setTempMemo(e.target.value)}
-            value={tmpMemo}
-          />
-        </FormControl>
-      </Box>
+      <PatternNameInput patternIndex={patternIndex} />
+      <PatternLabelInput patternIndex={patternIndex} />
+      <PatternPriorityInput patternIndex={patternIndex} />
+      <PatternMemoInput patternIndex={patternIndex} />
     </Box>
   )
 }
 
 const PatternList: FC = () => {
-  const [patternState, setPatternState] = useAtom(patternAtom)
-  const patterns = patternState.patterns
+  const patternLengthAtom = useMemo(() => focusAtom(patternAtom, (optic) => optic.prop("length")), [])
+  const patternLength = useAtomValue(patternLengthAtom)
+
+  const initialPatternLength = useAtomCallback(
+    useCallback((get, set) => {
+      const patterns = get(patternAtom).patterns
+      const length = patterns.length
+
+      set(patternAtom, {
+        length,
+        patterns,
+      })
+    }, []),
+  )
 
   useEffect(() => {
-    setPatternState({
-      patterns: patterns.map((p) => ({ ...p, expanded: false })),
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    initialPatternLength()
+  }, [initialPatternLength])
+
+  return (
+    <Box>
+      <AddPatternButton />
+      {Array.from({ length: patternLength }).map((_, index) => (
+        <Box key={index} my={4}>
+          <PatternItem index={index} />
+        </Box>
+      ))}
+    </Box>
+  )
+}
+
+const AddPatternButton: FC = () => {
+  const [patternState, setPatternState] = useAtom(patternAtom)
+  const patterns = patternState.patterns
 
   const addPattern = () => {
     const newPattern = {
@@ -1041,18 +1303,20 @@ const PatternList: FC = () => {
       priority: 1,
       uid: uuidv4(),
     }
-    setPatternState({ patterns: [...patterns, newPattern] })
+    setPatternState({
+      length: patterns.length + 1,
+      patterns: patterns.concat(newPattern),
+    })
   }
 
   return (
-    <Box>
-      <Button onClick={addPattern}>パターンを追加</Button>
-      {patterns.map((_, index) => (
-        <Box key={index} my={4}>
-          <PatternItem index={index} />
-        </Box>
-      ))}
-    </Box>
+    <Button
+      onClick={() => {
+        addPattern()
+      }}
+    >
+      パターンを追加
+    </Button>
   )
 }
 
@@ -1096,7 +1360,10 @@ const Label: FC<{ labelIndex: number }> = ({ labelIndex }) => {
       ...pattern,
       labels: pattern.labels.filter((label) => label.uid !== uid),
     }))
-    setPatternsState({ patterns: updatedPatterns })
+    setPatternsState({
+      length: updatedPatterns.length,
+      patterns: updatedPatterns,
+    })
   }
 
   const editLabel = (uid: string, newName: string) => {
@@ -1122,44 +1389,6 @@ const Label: FC<{ labelIndex: number }> = ({ labelIndex }) => {
         </Flex>
       </CardBody>
     </Card>
-  )
-}
-
-const CalculateButton: FC<{ trials: number }> = ({ trials }) => {
-  const deck = useAtomValue(deckAtom)
-  const card = useAtomValue(cardsAtom)
-  const pattern = useAtomValue(patternAtom)
-  const pot = useAtomValue(potAtom)
-  const setCalculationResult = useSetAtom(calculationResultAtom)
-
-  useEffect(() => {
-    if (pattern.patterns.length === 0) {
-      return
-    }
-    const result = calculateProbability(deck, card, pattern, trials, pot)
-    setCalculationResult(result)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const handleCalculate = () => {
-    if (pattern.patterns.length === 0) {
-      return
-    }
-    const result = calculateProbability(deck, card, pattern, trials, pot)
-    setCalculationResult(result)
-  }
-
-  const isInvalid = pattern.patterns.some((p) => p.conditions.some((c) => c.invalid))
-
-  return (
-    <HStack>
-      <Button disabled={isInvalid} onClick={handleCalculate}>
-        計算
-      </Button>
-      <Text as="b" color="red.400" fontSize="sm">
-        {isInvalid ? "条件が不正です" : ""}
-      </Text>
-    </HStack>
   )
 }
 

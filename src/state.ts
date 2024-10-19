@@ -9,6 +9,7 @@ export type DeckState = {
 
 export type CardsState = {
   cards: Array<CardData>
+  length: number
 }
 
 export type CardData = {
@@ -40,6 +41,7 @@ export type Pattern = {
 }
 
 export type PatternState = {
+  length: number
   patterns: Array<Pattern>
 }
 
@@ -75,9 +77,11 @@ const defaultDeckState: DeckState = {
 
 const defaultCardsState: CardsState = {
   cards: [],
+  length: 0,
 }
 
 const defaultPatternState: PatternState = {
+  length: 0,
   patterns: [],
 }
 

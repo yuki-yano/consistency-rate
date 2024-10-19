@@ -38,12 +38,21 @@ importers:
       jotai-devtools:
         specifier: ^0.10.1
         version: 0.10.1(@types/react@18.3.11)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(redux@5.0.1)
+      jotai-effect:
+        specifier: ^1.0.3
+        version: 1.0.3(jotai@2.10.0(@types/react@18.3.11)(react@18.3.1))
       jotai-location:
         specifier: ^0.5.5
         version: 0.5.5(jotai@2.10.0(@types/react@18.3.11)(react@18.3.1))
+      jotai-optics:
+        specifier: ^0.4.0
+        version: 0.4.0(jotai@2.10.0(@types/react@18.3.11)(react@18.3.1))(optics-ts@2.4.1)
       lz-string:
         specifier: ^1.5.0
         version: 1.5.0
+      optics-ts:
+        specifier: ^2.4.1
+        version: 2.4.1
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -1617,10 +1626,21 @@ packages:
     peerDependencies:
       react: '>=17.0.0'
 
+  jotai-effect@1.0.3:
+    resolution: {integrity: sha512-Xye6oVMQkhOmkF9G5gdtwlqG2w9GuMcfYdRS0aV/HeoYCj1LfLJ4O8jQRVT/Zb5hPGOLGNll/x6k5wxifn1jYg==}
+    peerDependencies:
+      jotai: '>=2.5.0'
+
   jotai-location@0.5.5:
     resolution: {integrity: sha512-6QW/7W9IJHjhbn7gRgAw4sC30k0/G6JiC4uPlKi8ZPZGYk7R7r9PyMD2eVhL4XSxxag89JxS1iSyr6BIXsB4Sw==}
     peerDependencies:
       jotai: '>=1.11.0'
+
+  jotai-optics@0.4.0:
+    resolution: {integrity: sha512-osbEt9AgS55hC4YTZDew2urXKZkaiLmLqkTS/wfW5/l0ib8bmmQ7kBXSFaosV6jDDWSp00IipITcJARFHdp42g==}
+    peerDependencies:
+      jotai: '>=2.0.0'
+      optics-ts: '>=2.0.0'
 
   jotai@2.10.0:
     resolution: {integrity: sha512-8W4u0aRlOIwGlLQ0sqfl/c6+eExl5D8lZgAUolirZLktyaj4WnxO/8a0HEPmtriQAB6X5LMhXzZVmw02X0P0qQ==}
@@ -1786,6 +1806,9 @@ packages:
 
   ohash@1.1.4:
     resolution: {integrity: sha512-FlDryZAahJmEF3VR3w1KogSEdWX3WhA5GPakFx4J81kEAiHyLMpdLLElS8n8dfNadMgAne/MywcvmogzscVt4g==}
+
+  optics-ts@2.4.1:
+    resolution: {integrity: sha512-HaYzMHvC80r7U/LqAd4hQyopDezC60PO2qF5GuIwALut2cl5rK1VWHsqTp0oqoJJWjiv6uXKqsO+Q2OO0C3MmQ==}
 
   optionator@0.9.4:
     resolution: {integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==}
@@ -3950,9 +3973,18 @@ snapshots:
       - react-dom
       - redux
 
+  jotai-effect@1.0.3(jotai@2.10.0(@types/react@18.3.11)(react@18.3.1)):
+    dependencies:
+      jotai: 2.10.0(@types/react@18.3.11)(react@18.3.1)
+
   jotai-location@0.5.5(jotai@2.10.0(@types/react@18.3.11)(react@18.3.1)):
     dependencies:
       jotai: 2.10.0(@types/react@18.3.11)(react@18.3.1)
+
+  jotai-optics@0.4.0(jotai@2.10.0(@types/react@18.3.11)(react@18.3.1))(optics-ts@2.4.1):
+    dependencies:
+      jotai: 2.10.0(@types/react@18.3.11)(react@18.3.1)
+      optics-ts: 2.4.1
 
   jotai@2.10.0(@types/react@18.3.11)(react@18.3.1):
     optionalDependencies:
@@ -4103,6 +4135,8 @@ snapshots:
       es-object-atoms: 1.0.0
 
   ohash@1.1.4: {}
+
+  optics-ts@2.4.1: {}
 
   optionator@0.9.4:
     dependencies:
