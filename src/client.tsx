@@ -1,5 +1,5 @@
 import type { MultiValue } from "chakra-react-select"
-import type { FC } from "react"
+import type { FC, FocusEvent } from "react"
 
 import {
   Accordion,
@@ -79,7 +79,7 @@ const App: FC = () => {
 
   const scrollToSuccessRates = () => {
     if (successRatesRef.current) {
-      successRatesRef.current.scrollIntoView({ behavior: "smooth", block: "start" })
+      successRatesRef.current.scrollIntoView({ behavior: "smooth", block: "center" })
     }
   }
 
@@ -657,7 +657,13 @@ const CardItem: FC<{ index: number; uid: string }> = memo(({ index, uid }) => {
           <Icon as={VscArrowCircleDown} color="gray.600" fontSize="xl" onClick={() => moveCardDown(index)} />
         </Flex>
 
-        <Box py={2}>
+        <Flex
+          direction={{
+            base: "row",
+            md: "column",
+          }}
+          gap={4}
+        >
           <FormControl>
             <FormLabel>カード名</FormLabel>
             <Input
@@ -670,27 +676,27 @@ const CardItem: FC<{ index: number; uid: string }> = memo(({ index, uid }) => {
               value={tmpName}
             />
           </FormControl>
-        </Box>
-
-        <Box py={2}>
-          <MultiSelect
-            chakraStyles={multiSelectStyles}
-            menuPortalTarget={document.body}
-            onChange={(selectedValues) => {
-              updateCardCount(Number((selectedValues as { label: string; value: string }).value))
-            }}
-            options={Array.from({ length: 21 }, (_, i) => i).map((i) => ({
-              label: i.toString(),
-              value: i.toString(),
-            }))}
-            value={[
-              {
-                label: card.count.toString(),
-                value: card.count.toString(),
-              },
-            ]}
-          />
-        </Box>
+          <FormControl>
+            <FormLabel>枚数</FormLabel>
+            <MultiSelect
+              chakraStyles={multiSelectStyles}
+              menuPortalTarget={document.body}
+              onChange={(selectedValues) => {
+                updateCardCount(Number((selectedValues as { label: string; value: string }).value))
+              }}
+              options={Array.from({ length: 21 }, (_, i) => i).map((i) => ({
+                label: i.toString(),
+                value: i.toString(),
+              }))}
+              value={[
+                {
+                  label: card.count.toString(),
+                  value: card.count.toString(),
+                },
+              ]}
+            />
+          </FormControl>
+        </Flex>
       </CardBody>
     </Card>
   )
@@ -1222,7 +1228,7 @@ const PatternMemoInput: FC<{ patternIndex: number }> = ({ patternIndex }) => {
   const pattern = patternState.patterns[patternIndex]
   const [tmpMemo, setTmpMemo] = useState(pattern.memo)
 
-  const handleBlur = (e: React.FocusEvent<HTMLTextAreaElement>) => {
+  const handleBlur = (e: FocusEvent<HTMLTextAreaElement>) => {
     const newPatterns = patternState.patterns.map((p, i) => {
       if (i === patternIndex) {
         return { ...p, memo: e.target.value }
@@ -1325,7 +1331,7 @@ const LabelManagement: FC = () => {
   const labels = labelsState.labels
 
   const addLabel = () => {
-    const labelToAdd = { name: `新規ラベル${labels.length + 1}`, uid: uuidv4() }
+    const labelToAdd = { name: `ラベル${labels.length + 1}`, uid: uuidv4() }
     setLabelsState({ labels: [...labels, labelToAdd] })
   }
 
