@@ -30,7 +30,7 @@ app.get("/", (c) => {
           <meta content={`初動率計算機${deckName}`} property="twitter:title" />
 
           {import.meta.env.PROD ? (
-            <script src="/client.js" type="module" />
+            <script src="/static/client.js" type="module" />
           ) : (
             <script src="/src/client.tsx" type="module" />
           )}

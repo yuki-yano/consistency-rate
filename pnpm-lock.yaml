@@ -78,9 +78,9 @@ importers:
       '@eslint/js':
         specifier: ^9.12.0
         version: 9.12.0
-      '@hono/vite-build':
-        specifier: ^1.0.0
-        version: 1.1.0(hono@4.6.3)
+      '@hono/vite-cloudflare-pages':
+        specifier: ^0.4.2
+        version: 0.4.2(hono@4.6.3)
       '@hono/vite-dev-server':
         specifier: ^0.15.1
         version: 0.15.2(hono@4.6.3)(miniflare@3.20240925.1)(wrangler@3.80.1(@cloudflare/workers-types@4.20241004.0))
@@ -650,8 +650,8 @@ packages:
     peerDependencies:
       hono: ^4
 
-  '@hono/vite-build@1.1.0':
-    resolution: {integrity: sha512-I5FZGZq1aYw+4KA4Ff4MD6xGmZAaldJNB0Gg89RTEYBz1EJdA0WMZtr9IftB93/oyWizOXX8Q9tHVXAUFxeRaQ==}
+  '@hono/vite-cloudflare-pages@0.4.2':
+    resolution: {integrity: sha512-fvSmWNtL7rMTa6tfj0dJNu0UStp8veb2r1BfutoKtJ6GaTzO1sR5ElQw9jIYo46oTBcx8+i/9+NzyGR56awtrQ==}
     engines: {node: '>=18.14.1'}
     peerDependencies:
       hono: '*'
@@ -2842,7 +2842,7 @@ snapshots:
     dependencies:
       hono: 4.6.3
 
-  '@hono/vite-build@1.1.0(hono@4.6.3)':
+  '@hono/vite-cloudflare-pages@0.4.2(hono@4.6.3)':
     dependencies:
       hono: 4.6.3
 
