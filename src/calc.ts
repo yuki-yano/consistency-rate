@@ -71,7 +71,7 @@ export const calculateProbability = (
     }
   }
 
-  const unknownCardCount = cardCount - totalDeckCards
+  const unknownCardCount = cardCount - totalDeckCards - 1
   if (unknownCardCount > 0) {
     const unknownCard = { name: "unknown", uid: "unknown_card" }
     for (let i = 0; i < unknownCardCount; i++) {
@@ -109,55 +109,35 @@ export const calculateProbability = (
     if (drawnCards.some((card) => card.uid === "prosperity_card")) {
       const cost = pot.prosperity.cost
       const extraCards = shuffledDeck.slice(firstHand, firstHand + cost)
-      let hasMatch = false
+      let matches: Array<Pattern> = []
+      const isPatternCounted: {
+        [uid: string]: boolean
+        overAll: boolean
+      } = {
+        overAll: false,
+      }
 
       for (const cardToAdd of extraCards) {
         const newDrawnCards = [...drawnCards, cardToAdd]
-        const matches = sortedPatterns.filter((pattern) => checkPatternConditions(newDrawnCards, shuffledDeck, pattern))
+        matches = sortedPatterns.filter((pattern) => checkPatternConditions(newDrawnCards, shuffledDeck, pattern))
 
         if (matches.length > 0) {
-          successCount++
-          hasMatch = true
-
-          const matchedLabels = new Set<string>()
-
-          for (const match of matches) {
-            const patternId = match.uid
-            if (!patternSuccessCount[patternId]) {
-              patternSuccessCount[patternId] = 0
-            }
-            patternSuccessCount[patternId]++
-
-            if (match.labels?.length > 0) {
-              for (const label of match.labels) {
-                if (!matchedLabels.has(label.uid)) {
-                  matchedLabels.add(label.uid)
-                  if (!labelSuccessCount[label.uid]) {
-                    labelSuccessCount[label.uid] = 0
-                  }
-                  labelSuccessCount[label.uid]++
-                }
-              }
-            }
+          if (!isPatternCounted["overAll"]) {
+            successCount++
+            isPatternCounted["overAll"] = true
           }
-          break
-        }
-      }
-
-      if (!hasMatch) {
-        const matches = sortedPatterns.filter((pattern) => checkPatternConditions(drawnCards, shuffledDeck, pattern))
-
-        if (matches.length > 0) {
-          successCount++
 
           const matchedLabels = new Set<string>()
 
           for (const match of matches) {
             const patternId = match.uid
-            if (!patternSuccessCount[patternId]) {
+            if (patternSuccessCount[patternId] == null) {
               patternSuccessCount[patternId] = 0
             }
-            patternSuccessCount[patternId]++
+            if (!isPatternCounted[patternId]) {
+              patternSuccessCount[patternId]++
+              isPatternCounted[patternId] = true
+            }
 
             if (match.labels?.length > 0) {
               for (const label of match.labels) {
@@ -183,7 +163,7 @@ export const calculateProbability = (
 
         for (const match of matches) {
           const patternId = match.uid
-          if (!patternSuccessCount[patternId]) {
+          if (patternSuccessCount[patternId] == null) {
             patternSuccessCount[patternId] = 0
           }
           patternSuccessCount[patternId]++
