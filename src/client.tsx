@@ -44,7 +44,7 @@ import { LuCalculator, LuCheckCircle2, LuCircle, LuCopy, LuCopyCheck } from "rea
 import { VscArrowCircleDown, VscArrowCircleUp, VscClose, VscCopy } from "react-icons/vsc"
 import { v4 as uuidv4 } from "uuid"
 
-import type { CardData, Condition, Pattern, PatternMode } from "./state"
+import type { CardData, Condition, Label, Pattern, PatternMode } from "./state"
 
 import { calculateProbability } from "./calc"
 import { fetchShortUrl } from "./fetch"
@@ -1342,21 +1342,27 @@ const LabelManagement: FC = () => {
       </Button>
       <Grid gap={4} templateColumns="repeat(auto-fill, minmax(300px, 1fr))">
         {labels.map((_, index) => (
-          <Label key={index} labelIndex={index} />
+          <Label key={index} labelIndex={index} labels={labels} setLabelsState={setLabelsState} />
         ))}
       </Grid>
     </Box>
   )
 }
 
-const Label: FC<{ labelIndex: number }> = ({ labelIndex }) => {
-  const [labelsState, setLabelsState] = useAtom(labelAtom)
-  const labels = labelsState.labels
+const Label: FC<{
+  labelIndex: number
+  labels: Array<Label>
+  setLabelsState: ({ labels }: { labels: Array<Label> }) => void
+}> = ({ labelIndex, labels, setLabelsState }) => {
   const label = labels[labelIndex]
   const [patternsState, setPatternsState] = useAtom(patternAtom)
   const patterns = patternsState.patterns
 
   const [tmpName, setTempName] = useState(label.name)
+
+  useEffect(() => {
+    setTempName(label.name)
+  }, [label])
 
   const deleteLabel = (uid: string) => {
     const newLabels = labels.filter((label) => label.uid !== uid)

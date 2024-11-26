@@ -45,11 +45,13 @@ export type PatternState = {
   patterns: Array<Pattern>
 }
 
+export type Label = {
+  name: string
+  uid: string
+}
+
 export type LabelState = {
-  labels: Array<{
-    name: string
-    uid: string
-  }>
+  labels: Array<Label>
 }
 
 type CalculationResultState = {
