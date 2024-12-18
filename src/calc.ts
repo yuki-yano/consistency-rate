@@ -52,17 +52,19 @@ export const calculateProbability = (
       return patterns.indexOf(a) - patterns.indexOf(b)
     })
 
-  const totalDeckCards = cards.reduce((total, c) => total + c.count, 0)
+  let totalDeckCards = cards.reduce((total, c) => total + c.count, 0)
   const fullDeck: Array<{ name: string; uid: string }> = []
 
   for (let i = 0; i < pot.prosperity.count; i++) {
     const prosperityCard = { name: "prosperity", uid: "prosperity_card" }
     fullDeck.push(prosperityCard)
+    totalDeckCards++
   }
 
   for (let i = 0; i < pot.desiresOrExtravagance.count; i++) {
     const desiresCard = { name: "desires", uid: "desires_card" }
     fullDeck.push(desiresCard)
+    totalDeckCards++
   }
 
   for (const c of cards) {
@@ -71,7 +73,7 @@ export const calculateProbability = (
     }
   }
 
-  const unknownCardCount = cardCount - totalDeckCards - 1
+  const unknownCardCount = cardCount - totalDeckCards
   if (unknownCardCount > 0) {
     const unknownCard = { name: "unknown", uid: "unknown_card" }
     for (let i = 0; i < unknownCardCount; i++) {
