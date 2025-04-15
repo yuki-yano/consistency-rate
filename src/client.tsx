@@ -45,6 +45,7 @@ import { VscArrowCircleDown, VscArrowCircleUp, VscClose, VscCopy } from "react-i
 import { v4 as uuidv4 } from "uuid"
 
 import type { CardData, Condition, Label, Pattern, PatternMode } from "./state"
+import type { CalculationResultState, CardsState, DeckState,  LabelState, PatternState, PotState } from "./state"
 
 import { calculateProbability } from "./calc"
 import { fetchShortUrl } from "./fetch"
@@ -64,7 +65,52 @@ const usePattern = (index: number) => {
   return useAtom(patternItemAtom) as [Pattern, (pattern: Pattern) => void]
 }
 
+type StateMap = {
+  calculationResult?: CalculationResultState | null
+  cards?: CardsState
+  deck?: DeckState
+  label?: LabelState
+  pattern?: PatternState
+  pot?: PotState
+}
+
+declare global {
+  interface Window {
+    getStateObject: () => StateMap
+    injectFromState: (states: StateMap) => void
+  }
+}
+
 const Root = () => {
+  const [deck, setDeck] = useAtom(deckAtom)
+  const [cards, setCards] = useAtom(cardsAtom)
+  const [pattern, setPattern] = useAtom(patternAtom)
+  const [pot, setPot] = useAtom(potAtom)
+  const [label, setLabel] = useAtom(labelAtom)
+  const [calculationResult, setCalculationResult] = useAtom(calculationResultAtom)
+
+  useEffect(() => {
+    window.injectFromState = (states: StateMap) => {
+      if (states.deck) setDeck(states.deck)
+      if (states.cards) setCards(states.cards)
+      if (states.pattern) setPattern(states.pattern)
+      if (states.pot) setPot(states.pot)
+      if (states.label) setLabel(states.label)
+      if (states.calculationResult) setCalculationResult(states.calculationResult)
+    }
+
+    window.getStateObject = () => {
+      return {
+        calculationResult,
+        cards,
+        deck,
+        label,
+        pattern,
+        pot,
+      }
+    }
+  }, [calculationResult, cards, deck, label, pattern, pot, setCalculationResult, setCards, setDeck, setLabel, setPattern, setPot])
+
   return (
     <ChakraProvider theme={theme}>
       {import.meta.env.DEV && <DevTools />}

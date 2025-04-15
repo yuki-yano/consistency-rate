@@ -54,7 +54,7 @@ export type LabelState = {
   labels: Array<Label>
 }
 
-type CalculationResultState = {
+export type CalculationResultState = {
   labelSuccessRates: { [label: string]: string }
   overallProbability: string
   patternSuccessRates: { [patternId: string]: string }
