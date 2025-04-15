@@ -45,7 +45,7 @@ import { VscArrowCircleDown, VscArrowCircleUp, VscClose, VscCopy } from "react-i
 import { v4 as uuidv4 } from "uuid"
 
 import type { CardData, Condition, Label, Pattern, PatternMode } from "./state"
-import type { CalculationResultState, CardsState, DeckState,  LabelState, PatternState, PotState } from "./state"
+import type { CalculationResultState, CardsState, DeckState, LabelState, PatternState, PotState } from "./state"
 
 import { calculateProbability } from "./calc"
 import { fetchShortUrl } from "./fetch"
@@ -109,7 +109,20 @@ const Root = () => {
         pot,
       }
     }
-  }, [calculationResult, cards, deck, label, pattern, pot, setCalculationResult, setCards, setDeck, setLabel, setPattern, setPot])
+  }, [
+    calculationResult,
+    cards,
+    deck,
+    label,
+    pattern,
+    pot,
+    setCalculationResult,
+    setCards,
+    setDeck,
+    setLabel,
+    setPattern,
+    setPot,
+  ])
 
   return (
     <ChakraProvider theme={theme}>
@@ -120,7 +133,6 @@ const Root = () => {
 }
 
 const App: FC = () => {
-  const [trials, setTrials] = useState<number>(100000)
   const successRatesRef = useRef<HTMLDivElement>(null)
 
   const scrollToSuccessRates = () => {
@@ -138,14 +150,14 @@ const App: FC = () => {
 
         <Show above="md">
           <Box my={2}>
-            <CalculateButton trials={trials} />
+            <CalculateButton />
           </Box>
         </Show>
 
         <ShortUrlGenerator />
 
         <Grid gap={4} templateColumns="repeat(auto-fill, minmax(300px, 1fr))">
-          <Deck setTrials={setTrials} trials={trials} />
+          <Deck />
           <Pot />
           <SuccessRates ref={successRatesRef} />
         </Grid>
@@ -164,7 +176,7 @@ const App: FC = () => {
       </Container>
 
       <Show below="md">
-        <SpCalcButton onClick={scrollToSuccessRates} trials={trials} />
+        <SpCalcButton onClick={scrollToSuccessRates} />
       </Show>
     </>
   )
@@ -205,18 +217,19 @@ const ShortUrlGenerator: FC = () => {
   )
 }
 
-const CalculateButton: FC<{ trials: number }> = ({ trials }) => {
+const CalculateButton: FC = () => {
   const deck = useAtomValue(deckAtom)
   const card = useAtomValue(cardsAtom)
   const pattern = useAtomValue(patternAtom)
   const pot = useAtomValue(potAtom)
+  const label = useAtomValue(labelAtom)
   const setCalculationResult = useSetAtom(calculationResultAtom)
 
   useEffect(() => {
     if (pattern.patterns.length === 0) {
       return
     }
-    const result = calculateProbability(deck, card, pattern, trials, pot)
+    const result = calculateProbability(deck, card, pattern, pot, label)
     setCalculationResult(result)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -225,7 +238,7 @@ const CalculateButton: FC<{ trials: number }> = ({ trials }) => {
     if (pattern.patterns.length === 0) {
       return
     }
-    const result = calculateProbability(deck, card, pattern, trials, pot)
+    const result = calculateProbability(deck, card, pattern, pot, label)
     setCalculationResult(result)
   }
 
@@ -245,12 +258,12 @@ const CalculateButton: FC<{ trials: number }> = ({ trials }) => {
 
 const SpCalcButton: FC<{
   onClick: () => void
-  trials: number
-}> = ({ onClick, trials }) => {
+}> = ({ onClick }) => {
   const deck = useAtomValue(deckAtom)
   const card = useAtomValue(cardsAtom)
   const pattern = useAtomValue(patternAtom)
   const pot = useAtomValue(potAtom)
+  const label = useAtomValue(labelAtom)
   const setCalculationResult = useSetAtom(calculationResultAtom)
 
   const isInvalid = pattern.patterns.some((p) => p.conditions.some((c) => c.invalid))
@@ -259,7 +272,7 @@ const SpCalcButton: FC<{
     if (isInvalid) {
       return
     }
-    const result = calculateProbability(deck, card, pattern, trials, pot)
+    const result = calculateProbability(deck, card, pattern, pot, label)
     setCalculationResult(result)
     onClick()
   }
@@ -269,7 +282,7 @@ const SpCalcButton: FC<{
       return
     }
 
-    const result = calculateProbability(deck, card, pattern, trials, pot)
+    const result = calculateProbability(deck, card, pattern, pot, label)
     setCalculationResult(result)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -294,7 +307,7 @@ const SpCalcButton: FC<{
   )
 }
 
-const Deck: FC<{ setTrials: (trials: number) => void; trials: number }> = ({ setTrials, trials }) => {
+const Deck: FC = () => {
   const [deck, setDeck] = useAtom(deckAtom)
 
   return (
@@ -346,31 +359,6 @@ const Deck: FC<{ setTrials: (trials: number) => void; trials: number }> = ({ set
                 {
                   label: deck.firstHand.toString(),
                   value: deck.firstHand.toString(),
-                },
-              ]}
-            />
-          </FormControl>
-        </Box>
-
-        <Box my={2}>
-          <FormControl>
-            <FormLabel>試行回数</FormLabel>
-            <MultiSelect
-              chakraStyles={multiSelectStyles}
-              menuPortalTarget={document.body}
-              onChange={(selectedValue) => {
-                setTrials(Number((selectedValue as { label: string; value: string }).value))
-              }}
-              options={[
-                { label: "1000", value: "1000" },
-                { label: "10000", value: "10000" },
-                { label: "100000", value: "100000" },
-                { label: "1000000", value: "1000000" },
-              ]}
-              value={[
-                {
-                  label: trials.toString(),
-                  value: trials.toString(),
                 },
               ]}
             />

@@ -6,7 +6,8 @@
     "build": "vite build --mode client && vite build",
     "preview": "wrangler pages dev",
     "deploy": "vite build --mode client && vite build && wrangler pages deploy",
-    "lint": "eslint"
+    "lint": "eslint",
+    "format": "prettier --write src/**/*.{ts,tsx}"
   },
   "dependencies": {
     "@chakra-ui/anatomy": "^2.3.4",
@@ -46,6 +47,7 @@
     "eslint-plugin-react": "^7.37.1",
     "eslint-plugin-react-hooks": "^5.0.0",
     "globals": "^15.11.0",
+    "prettier": "^3.5.3",
     "typescript-eslint": "^8.8.1",
     "vite": "^5.2.12",
     "wrangler": "^3.57.2"
