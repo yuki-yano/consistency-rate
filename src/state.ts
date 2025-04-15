@@ -1,6 +1,8 @@
 import { atom } from "jotai"
 import { atomWithHash, atomWithLocation } from "jotai-location"
 import lzstring from "lz-string"
+import type { Message } from "@ai-sdk/react"
+import { SYSTEM_PROMPT_MESSAGE } from "./const"
 
 export type DeckState = {
   cardCount: number
@@ -131,3 +133,8 @@ export const potAtom = atomWithHash<PotState>("pot", defaultPotState, {
 })
 
 export const calculationResultAtom = atom<CalculationResultState | null>(null)
+
+export const isChatOpenAtom = atom<boolean>(false)
+
+const defaultChatMessages: Array<Message> = [SYSTEM_PROMPT_MESSAGE]
+export const chatMessagesAtom = atom<Array<Message>>(defaultChatMessages)

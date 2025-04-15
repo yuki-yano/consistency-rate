@@ -24,6 +24,7 @@ import {
   HStack,
   Icon,
   Input,
+  IconButton,
   Link,
   ListItem,
   Show,
@@ -40,7 +41,7 @@ import "jotai-devtools/styles.css"
 import { focusAtom } from "jotai-optics"
 import { forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
-import { LuCalculator, LuCheckCircle2, LuCircle, LuCopy, LuCopyCheck } from "react-icons/lu"
+import { LuCalculator, LuCheckCircle2, LuCircle, LuCopy, LuCopyCheck, LuMessageSquare } from "react-icons/lu"
 import { VscArrowCircleDown, VscArrowCircleUp, VscClose, VscCopy } from "react-icons/vsc"
 import { v4 as uuidv4 } from "uuid"
 
@@ -49,8 +50,18 @@ import type { CalculationResultState, CardsState, DeckState, LabelState, Pattern
 
 import { calculateProbability } from "./calc"
 import { fetchShortUrl } from "./fetch"
-import { calculationResultAtom, cardsAtom, deckAtom, labelAtom, locAtom, patternAtom, potAtom } from "./state"
+import {
+  calculationResultAtom,
+  cardsAtom,
+  deckAtom,
+  isChatOpenAtom,
+  labelAtom,
+  locAtom,
+  patternAtom,
+  potAtom,
+} from "./state"
 import { multiSelectStyles, theme } from "./theme"
+import { ChatUI, ChatProvider } from "./chat"
 
 const useCard = (uid: string) => {
   const cardItemAtom = useMemo(
@@ -81,59 +92,11 @@ declare global {
   }
 }
 
-const Root = () => {
-  const [deck, setDeck] = useAtom(deckAtom)
-  const [cards, setCards] = useAtom(cardsAtom)
-  const [pattern, setPattern] = useAtom(patternAtom)
-  const [pot, setPot] = useAtom(potAtom)
-  const [label, setLabel] = useAtom(labelAtom)
-  const [calculationResult, setCalculationResult] = useAtom(calculationResultAtom)
-
-  useEffect(() => {
-    window.injectFromState = (states: StateMap) => {
-      if (states.deck) setDeck(states.deck)
-      if (states.cards) setCards(states.cards)
-      if (states.pattern) setPattern(states.pattern)
-      if (states.pot) setPot(states.pot)
-      if (states.label) setLabel(states.label)
-      if (states.calculationResult) setCalculationResult(states.calculationResult)
-    }
-
-    window.getStateObject = () => {
-      return {
-        calculationResult,
-        cards,
-        deck,
-        label,
-        pattern,
-        pot,
-      }
-    }
-  }, [
-    calculationResult,
-    cards,
-    deck,
-    label,
-    pattern,
-    pot,
-    setCalculationResult,
-    setCards,
-    setDeck,
-    setLabel,
-    setPattern,
-    setPot,
-  ])
-
-  return (
-    <ChakraProvider theme={theme}>
-      {import.meta.env.DEV && <DevTools />}
-      <App />
-    </ChakraProvider>
-  )
-}
-
 const App: FC = () => {
   const successRatesRef = useRef<HTMLDivElement>(null)
+  const [isChatOpen, setIsChatOpen] = useAtom(isChatOpenAtom)
+  const loc = useAtomValue(locAtom)
+  const isAiMode = useMemo(() => loc.searchParams?.get("mode") === "ai", [loc.searchParams])
 
   const scrollToSuccessRates = () => {
     if (successRatesRef.current) {
@@ -178,6 +141,33 @@ const App: FC = () => {
       <Show below="md">
         <SpCalcButton onClick={scrollToSuccessRates} />
       </Show>
+
+      {isAiMode && (
+        <>
+          <IconButton
+            aria-label="チャットを開く"
+            icon={<Icon as={LuMessageSquare} w={8} h={8} />}
+            position="fixed"
+            bottom={{ base: 24, md: 6 }}
+            right={6}
+            zIndex="sticky"
+            onClick={() => setIsChatOpen(true)}
+            isRound
+            bgColor="gray.300"
+            color="gray.600"
+            boxShadow="md"
+            h={14}
+            w={14}
+            p={2}
+            _hover={{
+              bgColor: "gray.400",
+            }}
+            visibility={isChatOpen ? "hidden" : "visible"}
+          />
+
+          {isChatOpen && <ChatUI />}
+        </>
+      )}
     </>
   )
 }
@@ -1008,6 +998,10 @@ const PatternItem: FC<{ index: number }> = ({ index }) => {
     }, []),
   )
 
+  if (pattern == null) {
+    return null
+  }
+
   const isInvalid = pattern?.conditions.some((condition) => condition.invalid)
 
   return (
@@ -1435,6 +1429,59 @@ const Label: FC<{
         </Flex>
       </CardBody>
     </Card>
+  )
+}
+
+const Root = () => {
+  const [deck, setDeck] = useAtom(deckAtom)
+  const [cards, setCards] = useAtom(cardsAtom)
+  const [pattern, setPattern] = useAtom(patternAtom)
+  const [pot, setPot] = useAtom(potAtom)
+  const [label, setLabel] = useAtom(labelAtom)
+  const [calculationResult, setCalculationResult] = useAtom(calculationResultAtom)
+
+  useEffect(() => {
+    window.injectFromState = (states: StateMap) => {
+      if (states.deck) setDeck(states.deck)
+      if (states.cards) setCards(states.cards)
+      if (states.pattern) setPattern(states.pattern)
+      if (states.pot) setPot(states.pot)
+      if (states.label) setLabel(states.label)
+      if (states.calculationResult) setCalculationResult(states.calculationResult)
+    }
+
+    window.getStateObject = () => {
+      return {
+        calculationResult,
+        cards,
+        deck,
+        label,
+        pattern,
+        pot,
+      }
+    }
+  }, [
+    calculationResult,
+    cards,
+    deck,
+    label,
+    pattern,
+    pot,
+    setCalculationResult,
+    setCards,
+    setDeck,
+    setLabel,
+    setPattern,
+    setPot,
+  ])
+
+  return (
+    <ChakraProvider theme={theme}>
+      {import.meta.env.DEV && <DevTools />}
+      <ChatProvider>
+        <App />
+      </ChatProvider>
+    </ChakraProvider>
   )
 }
 
