@@ -17,7 +17,7 @@ type BigIntComposition = Record<string, bigint>
 // Result structure for the pot/pattern check
 type CheckResult = {
   isSuccess: boolean
-  patternUid: string | null
+  patternUids: string[]
   labelUids: string[]
 }
 
@@ -150,40 +150,28 @@ const findSatisfiedPatternsAndLabels = (
   effectiveHand: Composition,
   effectiveDeck: Composition,
   activePatterns: ReadonlyArray<Pattern>,
-): { bestPattern: Pattern | null; allSatisfiedLabels: string[] } => {
-  let bestPattern: Pattern | null = null
+): { satisfiedPatternUids: string[]; allSatisfiedLabels: string[] } => {
   const satisfiedPatterns: Pattern[] = []
   const allLabelsSet = new Set<string>()
+  const satisfiedPatternUidsSet = new Set<string>()
 
   for (const p of activePatterns) {
     if (checkSinglePattern(effectiveHand, effectiveDeck, p)) {
       satisfiedPatterns.push(p)
-      // Collect labels from this satisfied pattern
+      if (p.uid && p.uid.length > 0) {
+        satisfiedPatternUidsSet.add(p.uid)
+      }
       p.labels?.forEach((labelRef) => {
         if (labelRef.uid && labelRef.uid.length > 0) {
-          // Ensure label uid is valid
           allLabelsSet.add(labelRef.uid)
         }
       })
     }
   }
 
-  // Determine the best pattern among those satisfied (for pattern success rate)
-  if (satisfiedPatterns.length > 0) {
-    // Sort satisfied patterns by priority and original index to find the single best one
-    satisfiedPatterns.sort((a, b) => {
-      if (a.priority !== b.priority) {
-        return a.priority - b.priority
-      }
-      // Tie-breaking using original index within the full patterns list (requires access or pre-calculated indices)
-      // Assuming activePatterns preserves original relative order is simpler here:
-      return activePatterns.findIndex((pat) => pat.uid === a.uid) - activePatterns.findIndex((pat) => pat.uid === b.uid)
-    })
-    bestPattern = satisfiedPatterns[0] // The first one after sorting is the best
-  }
-
   const allSatisfiedLabels = Array.from(allLabelsSet)
-  return { bestPattern: bestPattern, allSatisfiedLabels: allSatisfiedLabels }
+  const satisfiedPatternUids = Array.from(satisfiedPatternUidsSet)
+  return { satisfiedPatternUids: satisfiedPatternUids, allSatisfiedLabels: allSatisfiedLabels }
 }
 
 // --- Helper function to check pots and determine final success state --- (Uses new find function)
@@ -199,136 +187,97 @@ const checkPotsAndPatterns = (
   const handHasDesires = (hand[desiresUid] || 0) > 0
   const prosperityCost = pot.prosperity.cost
 
+  const finalPatternUidsSet = new Set<string>()
+  const finalLabelsSet = new Set<string>()
+
   // Scenario 1: Prosperity Drawn
   if (handHasProsperity && pot.prosperity.count > 0) {
     const remainingDeckSize = Object.values(remainingDeck).reduce((s, c) => s + c, 0)
     const initialHandWithoutProsperity = { ...hand }
     initialHandWithoutProsperity[prosperityUid] = (initialHandWithoutProsperity[prosperityUid] || 0) - 1
 
-    const { bestPattern: initialBestPattern, allSatisfiedLabels: initialLabels } = findSatisfiedPatternsAndLabels(
+    const { satisfiedPatternUids: initialPatternUids, allSatisfiedLabels: initialLabels } = findSatisfiedPatternsAndLabels(
       initialHandWithoutProsperity,
       remainingDeck,
       activePatterns,
     )
-    let finalBestPattern = initialBestPattern // This needs to be let as it can be updated
-    const finalLabelsSet = new Set<string>(initialLabels)
+    initialPatternUids.forEach(uid => finalPatternUidsSet.add(uid));
+    initialLabels.forEach(uid => finalLabelsSet.add(uid));
 
     if (remainingDeckSize >= prosperityCost) {
-      for (const uidToAdd of Object.keys(remainingDeck)) {
-        if ((remainingDeck[uidToAdd] || 0) > 0) {
-          const effectiveHand = { ...initialHandWithoutProsperity }
-          effectiveHand[uidToAdd] = (effectiveHand[uidToAdd] || 0) + 1
-          const { bestPattern: p, allSatisfiedLabels: l } = findSatisfiedPatternsAndLabels(
-            effectiveHand,
-            remainingDeck,
-            activePatterns,
-          )
-
-          if (p) {
-            const currentBestPriority = finalBestPattern?.priority ?? Infinity
-            const newPatternPriority = p.priority
-            if (newPatternPriority < currentBestPriority) {
-              finalBestPattern = p
-            } else if (newPatternPriority === currentBestPriority && finalBestPattern) {
-              const currentBestIndex = activePatterns.findIndex((pat) => pat.uid === finalBestPattern!.uid)
-              const newPatternIndex = activePatterns.findIndex((pat) => pat.uid === p.uid)
-              if (newPatternIndex !== -1 && newPatternIndex < currentBestIndex) {
-                finalBestPattern = p
-              }
-            }
+      const deckUids = Object.keys(remainingDeck);
+      for (const uidToAdd of deckUids) {
+          if ((remainingDeck[uidToAdd] || 0) > 0) {
+              const effectiveHand = { ...initialHandWithoutProsperity };
+              effectiveHand[uidToAdd] = (effectiveHand[uidToAdd] || 0) + 1;
+              const { satisfiedPatternUids: uids, allSatisfiedLabels: labels } = findSatisfiedPatternsAndLabels(
+                  effectiveHand,
+                  remainingDeck,
+                  activePatterns
+              );
+              uids.forEach(uid => finalPatternUidsSet.add(uid));
+              labels.forEach(labelUid => finalLabelsSet.add(labelUid));
           }
-          l.forEach((labelUid) => finalLabelsSet.add(labelUid))
-        }
       }
     }
-    const finalLabelsArray = Array.from(finalLabelsSet)
-    const finalPatternUid = finalBestPattern?.uid ?? null
-    return {
-      isSuccess: finalLabelsSet.size > 0 || !!finalBestPattern,
-      patternUid: finalPatternUid != null && finalPatternUid.length > 0 ? finalPatternUid : null,
-      labelUids: finalLabelsArray,
-    }
-
-    // Scenario 2: No Prosperity, Desires/Extravagance Drawn (Approximation for Draw 2)
   } else if (handHasDesires && pot.desiresOrExtravagance.count > 0) {
-    const { bestPattern: initialPattern, allSatisfiedLabels: initialLabels } = findSatisfiedPatternsAndLabels(
+    const { satisfiedPatternUids: initialPatternUids, allSatisfiedLabels: initialLabels } = findSatisfiedPatternsAndLabels(
       hand,
       remainingDeck,
       activePatterns,
     )
+    initialPatternUids.forEach(uid => finalPatternUidsSet.add(uid));
+    initialLabels.forEach(uid => finalLabelsSet.add(uid));
 
-    if (initialPattern || initialLabels.length > 0) {
-      const finalPatternUid = initialPattern?.uid ?? null
-      return {
-        isSuccess: true,
-        patternUid: finalPatternUid != null && finalPatternUid.length > 0 ? finalPatternUid : null,
-        labelUids: initialLabels,
-      }
-    }
-
-    let finalBestPattern: Pattern | null = null // Needs to be let
-    const finalLabelsSet = new Set<string>()
     const availableUids = Object.keys(remainingDeck).filter((uid) => (remainingDeck[uid] || 0) > 0)
 
-    outerLoop: for (let i = 0; i < availableUids.length; i++) {
+    for (let i = 0; i < availableUids.length; i++) {
       for (let j = i + 1; j < availableUids.length; j++) {
         const uid1 = availableUids[i]
         const uid2 = availableUids[j]
         const effectiveHand = { ...hand }
         effectiveHand[uid1] = (effectiveHand[uid1] || 0) + 1
         effectiveHand[uid2] = (effectiveHand[uid2] || 0) + 1
-        const { bestPattern: p, allSatisfiedLabels: l } = findSatisfiedPatternsAndLabels(
+         const { satisfiedPatternUids: uids, allSatisfiedLabels: labels } = findSatisfiedPatternsAndLabels(
           effectiveHand,
           remainingDeck,
           activePatterns,
         )
-        if (p || l.length > 0) {
-          finalBestPattern = p
-          l.forEach((labelUid) => finalLabelsSet.add(labelUid))
-          break outerLoop
-        }
+        uids.forEach(uid => finalPatternUidsSet.add(uid));
+        labels.forEach(labelUid => finalLabelsSet.add(labelUid));
       }
     }
-    if (!finalBestPattern && finalLabelsSet.size === 0) {
-      for (const uid of availableUids) {
+    for (const uid of availableUids) {
         if ((remainingDeck[uid] || 0) >= 2) {
-          const effectiveHand = { ...hand }
-          effectiveHand[uid] = (effectiveHand[uid] || 0) + 2
-          const { bestPattern: p, allSatisfiedLabels: l } = findSatisfiedPatternsAndLabels(
-            effectiveHand,
-            remainingDeck,
-            activePatterns,
-          )
-          if (p || l.length > 0) {
-            finalBestPattern = p
-            l.forEach((labelUid) => finalLabelsSet.add(labelUid))
-            break
-          }
+            const effectiveHand = { ...hand };
+            effectiveHand[uid] = (effectiveHand[uid] || 0) + 2;
+            const { satisfiedPatternUids: uids, allSatisfiedLabels: labels } = findSatisfiedPatternsAndLabels(
+                effectiveHand,
+                remainingDeck,
+                activePatterns
+            );
+            uids.forEach(uid => finalPatternUidsSet.add(uid));
+            labels.forEach(labelUid => finalLabelsSet.add(labelUid));
         }
-      }
     }
-
-    const finalLabelsArray = Array.from(finalLabelsSet)
-    const finalPatternUid = finalBestPattern?.uid ?? null
-    return {
-      isSuccess: !!finalBestPattern || finalLabelsArray.length > 0,
-      patternUid: finalPatternUid != null && finalPatternUid.length > 0 ? finalPatternUid : null,
-      labelUids: finalLabelsArray,
-    }
-
-    // Scenario 3: Neither Pot effect applies
   } else {
-    const { bestPattern: p, allSatisfiedLabels: l } = findSatisfiedPatternsAndLabels(
+     const { satisfiedPatternUids: uids, allSatisfiedLabels: labels } = findSatisfiedPatternsAndLabels(
       hand,
       remainingDeck,
       activePatterns,
     )
-    const finalPatternUid = p?.uid ?? null
-    return {
-      isSuccess: !!p || l.length > 0,
-      patternUid: finalPatternUid != null && finalPatternUid.length > 0 ? finalPatternUid : null,
-      labelUids: l,
-    }
+     uids.forEach(uid => finalPatternUidsSet.add(uid));
+     labels.forEach(labelUid => finalLabelsSet.add(labelUid));
+  }
+
+  const finalPatternUidsArray = Array.from(finalPatternUidsSet).filter(uid => uid && uid.length > 0);
+  const finalLabelsArray = Array.from(finalLabelsSet).filter(uid => uid && uid.length > 0);
+  const isSuccess = finalPatternUidsArray.length > 0 || finalLabelsArray.length > 0
+
+  return {
+    isSuccess: isSuccess,
+    patternUids: finalPatternUidsArray,
+    labelUids: finalLabelsArray,
   }
 }
 
@@ -336,8 +285,9 @@ const checkPotsAndPatterns = (
 // ... (Type definition, memo, createMemoKey remain the same)
 type RecursiveCalcResult = {
   totalCombinations: bigint
-  patternSuccessCombinations: BigIntComposition
+  individualPatternSuccessCombinations: BigIntComposition
   labelSuccessCombinations: BigIntComposition
+  overallSuccessCombinations: bigint
 }
 let memo: Record<string, RecursiveCalcResult> = {}
 const createMemoKey = (index: number, slots: number, comp: Composition): string => {
@@ -358,7 +308,6 @@ const recursiveCalcCombinations = (
   // Base Case
   if (cardIndex === cardUids.length || remainingHandSlots === 0) {
     if (remainingHandSlots === 0) {
-      // ... (remainingDeckComp calculation) ...
       const remainingDeckComp: Composition = {}
       Object.keys(originalDeckComposition).forEach((uid) => {
         const handCount: number = currentHandComposition[uid] || 0
@@ -373,22 +322,21 @@ const recursiveCalcCombinations = (
 
       const result: RecursiveCalcResult = {
         totalCombinations: 1n,
-        patternSuccessCombinations: {},
+        individualPatternSuccessCombinations: {},
         labelSuccessCombinations: {},
+        overallSuccessCombinations: checkResult.isSuccess ? 1n : 0n,
       }
-      const validPatternUid = checkResult.patternUid // Already checked for non-empty in checkPotsAndPatterns
-      if (validPatternUid != null) {
-        // Only check for null/undefined now
-        result.patternSuccessCombinations[validPatternUid] = 1n
-      }
-      // Use the possibly empty but filtered labelUids list
+      checkResult.patternUids.forEach((patternUid) => {
+        if (patternUid) {
+           result.individualPatternSuccessCombinations[patternUid] = 1n;
+        }
+      });
       checkResult.labelUids.forEach((labelUid) => {
-        // Assuming labelUid is valid string here as it comes from filtered list
         result.labelSuccessCombinations[labelUid] = (result.labelSuccessCombinations[labelUid] || 0n) + 1n
       })
       return result
     } else {
-      return { totalCombinations: 0n, patternSuccessCombinations: {}, labelSuccessCombinations: {} }
+      return { totalCombinations: 0n, individualPatternSuccessCombinations: {}, labelSuccessCombinations: {}, overallSuccessCombinations: 0n }
     }
   }
 
@@ -399,8 +347,9 @@ const recursiveCalcCombinations = (
   }
   const totalResult: RecursiveCalcResult = {
     totalCombinations: 0n,
-    patternSuccessCombinations: {},
+    individualPatternSuccessCombinations: {},
     labelSuccessCombinations: {},
+    overallSuccessCombinations: 0n,
   }
   const currentUid = cardUids[cardIndex]
   const originalCountForCurrentUid: number = originalDeckComposition[currentUid] || 0
@@ -428,13 +377,15 @@ const recursiveCalcCombinations = (
       if (subResult.totalCombinations > 0n) {
         const weightedCombinations = comb * subResult.totalCombinations
         totalResult.totalCombinations += weightedCombinations
-        Object.entries(subResult.patternSuccessCombinations).forEach(([patternUid, subCount]: [string, bigint]) => {
-          if (patternUid) {
-            const weightedSubCount = comb * subCount
-            totalResult.patternSuccessCombinations[patternUid] =
-              (totalResult.patternSuccessCombinations[patternUid] || 0n) + weightedSubCount
-          }
-        })
+        totalResult.overallSuccessCombinations += comb * subResult.overallSuccessCombinations
+
+        Object.entries(subResult.individualPatternSuccessCombinations).forEach(([patternUid, subCount]: [string, bigint]) => {
+           if (patternUid) {
+               const weightedSubCount = comb * subCount;
+               totalResult.individualPatternSuccessCombinations[patternUid] =
+                   (totalResult.individualPatternSuccessCombinations[patternUid] || 0n) + weightedSubCount;
+           }
+        });
         Object.entries(subResult.labelSuccessCombinations).forEach(([labelUid, subCount]: [string, bigint]) => {
           if (labelUid) {
             const weightedSubCount = comb * subCount
@@ -580,21 +531,22 @@ export const calculateProbability = (
   }
 
   // --- Aggregate Results ---
-  let overallSuccessCombinations: bigint = 0n
+  // Use the new overallSuccessCombinations from the result
+  const overallSuccessCombinations: bigint = result.overallSuccessCombinations
   // Note: Overall success is now based on *any* label being present or a pattern being met.
   // This might differ from just summing pattern successes if a hand satisfies labels but no specific pattern directly.
   // We will sum the combinations associated with each label for the label rates.
   // For overall success, we might need a different approach if the definition changes.
   // Sticking to summing pattern successes for overall probability for now.
-  Object.values(result.patternSuccessCombinations).forEach((count: bigint) => {
-    overallSuccessCombinations += count
-  })
+  // Object.values(result.patternSuccessCombinations).forEach((count: bigint) => { // Remove this summation
+  //   overallSuccessCombinations += count
+  // })
 
   // --- Convert to Probabilities ---
   const overallProbability = denominator > 0n ? Number((overallSuccessCombinations * 10000n) / denominator) / 100 : 0
 
   const patternSuccessRates: Record<string, string> = {}
-  Object.entries(result.patternSuccessCombinations).forEach(([patternId, count]: [string, bigint]) => {
+  Object.entries(result.individualPatternSuccessCombinations).forEach(([patternId, count]: [string, bigint]) => {
     const rate = denominator > 0n ? Number((count * 10000n) / denominator) / 100 : 0
     patternSuccessRates[patternId] = sprintf("%.2f", rate)
   })
