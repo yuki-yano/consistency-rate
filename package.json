@@ -10,6 +10,7 @@
     "format": "prettier --write src/**/*.{ts,tsx}"
   },
   "dependencies": {
+    "@ai-sdk/google": "^1.2.12",
     "@ai-sdk/openai": "^1.3.12",
     "@ai-sdk/react": "^1.2.9",
     "@chakra-ui/anatomy": "^2.3.4",

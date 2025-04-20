@@ -1,46 +1,151 @@
-import React, { FC, ChangeEvent, useMemo, useRef, useEffect, useState } from "react"
+import React, { FC, ChangeEvent, useMemo, useRef, useEffect, useState, KeyboardEvent } from "react"
 
-import { Box, Flex, Heading, Icon, IconButton, Button, VStack, Text, useToast, Textarea } from "@chakra-ui/react"
+import {
+  Box,
+  Flex,
+  Heading,
+  Icon,
+  IconButton,
+  Button,
+  VStack,
+  Text,
+  useToast,
+  Textarea,
+  Spinner,
+  Select,
+  FormControl,
+  FormLabel,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalFooter,
+  ModalBody,
+  ModalCloseButton,
+  useDisclosure,
+} from "@chakra-ui/react"
 import { useSetAtom, useAtomValue, useAtom } from "jotai"
 import { VscClose } from "react-icons/vsc"
 import TextareaAutosize from 'react-textarea-autosize';
 import { useChat } from "@ai-sdk/react"
 import { ChatContext, useChatContext } from "./chatContext"
 
-import { isChatOpenAtom } from "./state"
+import { isChatOpenAtom, aiProviderAtom, systemPromptAtom, chatMessagesAtom, deckAtom, cardsAtom, patternAtom, potAtom, labelAtom } from "./state";
+import { SYSTEM_PROMPT_MESSAGE } from "./const";
 import type { CardsState, PatternState, LabelState } from "./state"
-import { deckAtom, cardsAtom, patternAtom, potAtom, labelAtom, chatMessagesAtom } from "./state";
 
-// --- ChatProvider ---
 export const ChatProvider: FC<{ children: React.ReactNode }> = ({ children }) => {
   const [persistedMessages] = useAtom(chatMessagesAtom);
+  const selectedProvider = useAtomValue(aiProviderAtom);
   const toast = useToast();
+  const [thinkingBudget, setThinkingBudget] = useState<number>(0);
+  const [systemPrompt] = useAtom(systemPromptAtom);
 
   const chatHelpers = useChat({
     api: "/api/chat",
     initialMessages: persistedMessages,
+    body: {
+      provider: selectedProvider,
+      thinkingBudget: selectedProvider === 'google' ? thinkingBudget : undefined,
+      systemPrompt: systemPrompt,
+    },
     onError: (err) => {
       console.error("Chat error:", err);
       toast({ title: "チャットエラー", description: err.message, status: "error", duration: 5000, isClosable: true });
     },
   });
 
-  // アプリケーション終了時などの永続化が必要な場合は別途検討
-  // useEffect(() => {...
-
   return (
-    <ChatContext.Provider value={chatHelpers}>
+    <ChatContext.Provider value={{ ...chatHelpers, thinkingBudget, setThinkingBudget }}>
       {children}
     </ChatContext.Provider>
   );
 };
 
-// --- ChatUIInternal ---
+const SystemPromptModal: FC<{
+  isOpen: boolean;
+  onClose: () => void;
+}> = ({ isOpen, onClose }) => {
+  const [systemPrompt, setSystemPrompt] = useAtom(systemPromptAtom);
+  const [localPrompt, setLocalPrompt] = useState(systemPrompt);
+  const toast = useToast();
+  const defaultPromptContent = SYSTEM_PROMPT_MESSAGE.content;
+
+  useEffect(() => {
+    if (isOpen) {
+      setLocalPrompt(systemPrompt);
+    }
+  }, [isOpen, systemPrompt]);
+
+  const handleSave = () => {
+    setSystemPrompt(localPrompt);
+    toast({
+      title: "保存しました",
+      status: "success",
+      duration: 2000,
+      isClosable: true,
+    });
+    onClose();
+  };
+
+  const handleResetToDefault = () => {
+    setLocalPrompt(defaultPromptContent);
+    toast({
+      title: "デフォルトに戻しました",
+      status: "info",
+      duration: 2000,
+      isClosable: true,
+    });
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} size="xl" blockScrollOnMount={false}>
+      <ModalOverlay />
+      <ModalContent mx={8}>
+        <ModalHeader>システムプロンプト編集</ModalHeader>
+        <ModalCloseButton />
+        <ModalBody>
+          <Textarea
+            value={localPrompt}
+            onChange={(e) => setLocalPrompt(e.target.value)}
+            placeholder="システムプロンプトを入力..."
+            minHeight="300px"
+            size="sm"
+          />
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="outline" colorScheme="gray" mr="auto" onClick={handleResetToDefault} size="sm">
+            デフォルトに戻す
+          </Button>
+          <Button variant="ghost" mr={3} onClick={onClose} size="sm">
+            キャンセル
+          </Button>
+          <Button 
+            colorScheme="blue" 
+            bg="blue.500"
+            color="white"
+            _hover={{
+              bg: 'blue.600',
+            }}
+            onClick={handleSave} 
+            size="sm"
+          >
+            保存
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+};
+
 const ChatUIInternal: FC = () => {
   const setIsChatOpen = useSetAtom(isChatOpenAtom)
   const toast = useToast()
   const scrollRef = useRef<HTMLDivElement>(null)
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
+  const [aiProvider, setAiProvider] = useAtom(aiProviderAtom);
+  const { thinkingBudget, setThinkingBudget } = useChatContext();
+  const { isOpen, onOpen, onClose } = useDisclosure();
 
   const {
     messages,
@@ -161,17 +266,39 @@ const ChatUIInternal: FC = () => {
     }
   }
 
-  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleFormSubmit = (e?: React.FormEvent<HTMLFormElement> | React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e) {
+      e.preventDefault();
+    }
     if (!input.trim() || isLoading) {
       return;
     }
     const stateString = JSON.stringify(currentState, null, 2);
-    const combinedContent = `${input}\\n\\n--- Current State ---\\n\\\`\\\`\\\`json\\n${stateString}\\n\\\`\\\`\\\``;
+    const combinedContent = `${input}\n\n--- Current State ---\n\`\`\`json\n${stateString}\n\`\`\``;
     void append({ role: "user", content: combinedContent });
     setInput("");
     setShouldAutoScroll(true);
   };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleFormSubmit(e);
+    }
+  };
+
+  const handleProviderChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    setAiProvider(event.target.value as "google" | "openai");
+    if (event.target.value !== 'google') {
+      setThinkingBudget(0);
+    }
+  };
+
+  const handleThinkingBudgetChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    setThinkingBudget(parseInt(event.target.value, 10));
+  };
+
+  const nonSystemMessages = useMemo(() => messages.filter(m => m.role !== 'system'), [messages]);
 
   return (
     <Box
@@ -187,7 +314,7 @@ const ChatUIInternal: FC = () => {
       borderColor="gray.200"
       borderTopRadius={{ base: 'md', md: 'md' }}
       borderBottomRadius={{ base: 0, md: 'md' }}
-      zIndex="popover"
+      zIndex={1300}
       display="flex"
       flexDirection="column"
     >
@@ -211,57 +338,126 @@ const ChatUIInternal: FC = () => {
         p={4}
         align="stretch"
       >
-        {messages.length === 1 && messages[0].role === 'system' && !isLoading && (
-          <Text color="gray.500" textAlign="center" mt="auto" mb="auto">
-            メッセージを送信してください
-          </Text>
+        {nonSystemMessages.length === 0 && !isLoading && (
+           <Flex direction="column" align="center" justify="center" height="100%" p={4}>
+             <Text color="gray.500" textAlign="center" mb={4}>
+               メッセージを送信してください。
+             </Text>
+             <Button 
+               onClick={onOpen} 
+               size="sm" 
+               colorScheme="blue"
+               bg="blue.500"
+               color="white"
+               _hover={{
+                 bg: 'blue.600',
+               }}
+               disabled={isLoading}
+               _disabled={{
+                 bg: 'blue.300',
+                 color: 'white',
+                 cursor: 'not-allowed',
+                 opacity: 0.7,
+               }}
+             >
+               システムプロンプトを編集
+             </Button>
+           </Flex>
         )}
         {messages
           .filter(m => m.role !== 'system')
-          .map((m) => {
+          .map((m, index) => {
             const isAiAssistant = m.role === 'assistant';
             const isUser = m.role === 'user';
+            const isLastMessage = index === nonSystemMessages.length - 1;
 
-            let displayContent = m.content;
-            let useMonospace = false;
-            if (isAiAssistant) {
-              const codeBlockRegex = /^```json\\n?([\\s\\S]*?)\\n?```$/;
-              const match = displayContent.match(codeBlockRegex);
-              if (match && match[1]) {
-                displayContent = match[1].trim();
-                useMonospace = true;
-              } else {
-                 useMonospace = false;
-              }
-            } else if (isUser) {
-              const stateMarker = '\\n\\n--- Current State ---';
+            let displayElement: React.ReactNode;
+            let justify: "flex-start" | "flex-end";
+            let bgColor: string;
+            let textColor: string;
+
+            if (isUser) {
+              justify = "flex-end";
+              bgColor = "blue.500";
+              textColor = "white";
+              const stateMarker = '\n\n--- Current State ---';
               const markerIndex = m.content.indexOf(stateMarker);
+              let userText = m.content;
               if (markerIndex !== -1) {
-                  displayContent = m.content.substring(0, markerIndex).trim();
+                userText = m.content.substring(0, markerIndex).trim();
               }
-              useMonospace = false;
-            }
+              displayElement = (
+                <Text whiteSpace="pre-wrap" fontSize="sm">
+                  {userText}
+                </Text>
+              );
+            } else if (isAiAssistant) {
+              justify = "flex-start";
+              bgColor = "gray.100";
+              textColor = "black";
 
-            return (
-              <Flex key={m.id} w="full" justify={m.role === "user" ? "flex-end" : "flex-start"}>
-                <Box
-                  bg={m.role === "user" ? "blue.500" : "gray.100"}
-                  color={m.role === "user" ? "white" : "black"}
-                  px={3}
-                  py={1.5}
-                  borderRadius="lg"
-                  maxW="85%"
-                >
+              const jsonStartIndex = m.content.lastIndexOf('```json');
+              const isStreamingIncompleteJson = 
+                  isLastMessage && 
+                  isLoading && 
+                  jsonStartIndex !== -1 && 
+                  !m.content.substring(jsonStartIndex).trim().endsWith('```');
+
+              if (isStreamingIncompleteJson) {
+                const textBeforeJson = m.content.substring(0, jsonStartIndex).trim();
+
+                displayElement = (
+                  <VStack align="stretch" spacing={1}> 
+                    {textBeforeJson && ( 
+                      <Text whiteSpace="pre-wrap" fontSize="sm">
+                        {textBeforeJson}
+                      </Text>
+                    )}
+                    <Flex align="center"> 
+                      <Spinner size="sm" mr={2} speed="0.65s" />
+                      <Text fontSize="sm" fontStyle="italic" color="gray.600">データ生成中...</Text>
+                    </Flex>
+                  </VStack>
+                );
+              } else {
+                let assistantText = m.content;
+                let useMonospace = false;
+                const codeBlockRegex = /^```json\n?([\s\S]*?)\n?```$/; 
+                const match = m.content.match(codeBlockRegex);
+                if (match && match[1]) {
+                  assistantText = match[1].trim();
+                  useMonospace = true;
+                } else {
+                  useMonospace = false;
+                }
+                displayElement = (
                   <Text
                     whiteSpace="pre-wrap"
                     fontSize="sm"
                     fontFamily={useMonospace ? "monospace" : "inherit"}
                   >
-                    {displayContent}
+                    {assistantText}
                   </Text>
+                );
+              }
+            } else {
+              return null;
+            }
+
+            return (
+              <Flex key={m.id} w="full" justify={justify}>
+                <Box
+                  bg={bgColor}
+                  color={textColor}
+                  px={3}
+                  py={1.5}
+                  borderRadius="lg"
+                  maxW="85%"
+                >
+                  {displayElement}
                 </Box>
               </Flex>
-            )
+            );
           })
         }
         {error && (
@@ -273,32 +469,82 @@ const ChatUIInternal: FC = () => {
       </VStack>
 
       <Box p={4} borderTopWidth="1px">
-        {lastAssistantMessageContent != null && !isLoading && (
-          <Button
-            onClick={handleApplyState}
-            size="sm"
-            mb={2}
-            width="full"
-            colorScheme="green"
-            bg="green.500"
-            color="white"
-            _hover={{ bg: 'green.600' }}
-          >
-            最後の応答を状態に適用
-          </Button>
+        {nonSystemMessages.length === 0 && (
+          <Flex justify="space-between" align="flex-end" mb={2}>
+            <FormControl flex="1" mr={2}>
+              <FormLabel htmlFor="ai-provider" fontSize="xs" mb={0} mr={2} whiteSpace="nowrap">AI Provider:</FormLabel>
+              <Select
+                id="ai-provider"
+                size="sm"
+                value={aiProvider}
+                onChange={handleProviderChange}
+                disabled={isLoading}
+                focusBorderColor="blue.500"
+                borderRadius="md"
+              >
+                <option value="google">Google</option>
+                <option value="openai">OpenAI</option>
+              </Select>
+            </FormControl>
+
+            <FormControl
+              flex="1"
+              mr={3}
+              isDisabled={aiProvider !== 'google' || isLoading}
+            >
+              <FormLabel htmlFor="thinking-budget" fontSize="xs" mb={0} mr={2} whiteSpace="nowrap">Thinking Budget:</FormLabel>
+              <Select
+                id="thinking-budget"
+                size="sm"
+                value={thinkingBudget}
+                onChange={handleThinkingBudgetChange}
+                disabled={aiProvider !== 'google' || isLoading}
+                focusBorderColor="blue.500"
+                borderRadius="md"
+              >
+                <option value={0}>0</option>
+                <option value={1024}>1024</option>
+                <option value={8192}>8192</option>
+              </Select>
+            </FormControl>
+          </Flex>
         )}
-        {isLoading && (
-          <Button onClick={stop} size="sm" mb={2} width="full" variant="outline" colorScheme="red">
-            停止
-          </Button>
-        )}
+
+        <Flex justify="flex-end" mb={3}>
+          {lastAssistantMessageContent != null && !isLoading && (
+            <Button
+              onClick={handleApplyState}
+              size="sm"
+              width="full"
+              colorScheme="green"
+              bg="green.500"
+              color="white"
+              _hover={{ bg: 'green.600' }}
+            >
+              最後のメッセージのデータを適用
+            </Button>
+          )}
+          {isLoading && (
+            <Button 
+              onClick={stop} 
+              size="sm" 
+              width="full"
+              variant="outline" 
+              colorScheme="red"
+            >
+              停止
+            </Button>
+          )}
+        </Flex>
+
         <form onSubmit={handleFormSubmit}>
           <Flex align="flex-end">
             <Textarea
               as={TextareaAutosize}
               value={input}
               onChange={handleInputChange as (e: ChangeEvent<HTMLTextAreaElement>) => void}
-              placeholder="メッセージを入力..."
+              onKeyDown={handleKeyDown}
+              placeholder="メッセージを入力 (Ctrl+Enter or Cmd+Enter で送信)"
               mr={2}
               disabled={isLoading}
               size="sm"
@@ -335,11 +581,12 @@ const ChatUIInternal: FC = () => {
           </Flex>
         </form>
       </Box>
+
+      <SystemPromptModal isOpen={isOpen} onClose={onClose} />
     </Box>
   )
 }
 
-// --- ChatUI (Wrapper) ---
 export const ChatUI: FC = () => {
   const isChatOpen = useAtomValue(isChatOpenAtom);
   return isChatOpen ? <ChatUIInternal /> : null;

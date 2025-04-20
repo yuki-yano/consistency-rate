@@ -5,14 +5,18 @@ import { renderToString } from "react-dom/server"
 import { v4 as uuidv4 } from "uuid"
 import { z } from "zod"
 import { env } from "hono/adapter"
-import { CoreMessage, streamText } from "ai"
+import { CoreMessage, JSONValue, LanguageModel, streamText } from "ai"
 import { createOpenAI } from "@ai-sdk/openai"
+import { createGoogleGenerativeAI } from "@ai-sdk/google"
 
 type Bindings = {
   KV: KVNamespace
+  GEMINI_API_KEY: string
+  GEMINI_MODEL?: string
+  GOOGLE_AI_GATEWAY_URL?: string
   OPENAI_API_KEY: string
   OPENAI_MODEL?: string
-  AI_GATEWAY_URL?: string
+  OPENAI_AI_GATEWAY_URL?: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -59,9 +63,13 @@ app.get("/short_url/:key{[0-9a-z]{8}}", async (c) => {
 
   try {
     const requestUrl = new URL(c.req.url)
+    const modeParam = requestUrl.searchParams.get("mode")
+
     const redirectUrl = new URL(storedUrlString)
 
-    redirectUrl.search = requestUrl.search
+    if (modeParam !== null) {
+      redirectUrl.searchParams.set("mode", modeParam)
+    }
 
     return c.redirect(redirectUrl.toString())
   } catch (e) {
@@ -109,72 +117,135 @@ app.post("/api/shorten_url/create", csrf(), validator, async (c) => {
 
 app.post("/api/chat", async (c) => {
   try {
-    const { OPENAI_API_KEY, OPENAI_MODEL, AI_GATEWAY_URL } = env(c)
+    const {
+      GEMINI_API_KEY,
+      GEMINI_MODEL,
+      GOOGLE_AI_GATEWAY_URL,
+      OPENAI_API_KEY,
+      OPENAI_MODEL,
+      OPENAI_AI_GATEWAY_URL,
+    } = env(c)
 
-    if (!OPENAI_API_KEY) {
-      return new Response(JSON.stringify({ error: "OpenAI API Key is not configured" }), {
+    const { messages, provider, thinkingBudget, systemPrompt }: {
+      messages: CoreMessage[];
+      provider: "google" | "openai";
+      thinkingBudget?: number;
+      systemPrompt?: string;
+    } = await c.req.json()
+
+    if (!provider) {
+      return new Response(JSON.stringify({ error: "AI_PROVIDER environment variable is not set or invalid. Please set it to 'google' or 'openai'." }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
       })
     }
 
-    if (AI_GATEWAY_URL == null) {
-      return new Response(JSON.stringify({ error: "AI Gateway URL is not configured" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      })
+    let baseURL: string | undefined
+    let apiKey: string | undefined
+    let modelNameFromEnv: string | undefined
+    let clientFactory: typeof createOpenAI | typeof createGoogleGenerativeAI
+    let defaultModel: string
+    let providerOptions: Record<string, Record<string, JSONValue>> = {}
+
+    if (provider === "google") {
+      baseURL = GOOGLE_AI_GATEWAY_URL
+      apiKey = GEMINI_API_KEY
+      modelNameFromEnv = GEMINI_MODEL
+      clientFactory = createGoogleGenerativeAI
+      defaultModel = "gemini-2.5-flash-preview-04-17"
+      const validThinkingBudget = typeof thinkingBudget === 'number' && [0, 1024, 8192].includes(thinkingBudget) ? thinkingBudget : 0;
+      providerOptions = {
+        google: {
+          thinkingConfig: {
+            thinkingBudget: validThinkingBudget,
+          },
+        },
+      }
+      if (baseURL == null) {
+        return new Response(JSON.stringify({ error: "GOOGLE_AI_GATEWAY_URL is not set, but provider in request is 'google'." }), { status: 500 })
+      }
+      if (!apiKey) {
+        return new Response(JSON.stringify({ error: "GEMINI_API_KEY is not set, but provider in request is 'google'." }), { status: 500 })
+      }
+    } else if (provider === "openai") {
+      baseURL = OPENAI_AI_GATEWAY_URL
+      apiKey = OPENAI_API_KEY
+      modelNameFromEnv = OPENAI_MODEL
+      clientFactory = createOpenAI
+      defaultModel = "gpt-4.1-mini-2025-04-14"
+      providerOptions = {
+        openai: {
+          // Add OpenAI specific options if needed
+        },
+      }
+      if (baseURL == null) {
+        return new Response(JSON.stringify({ error: "OPENAI_AI_GATEWAY_URL is not set, but provider in request is 'openai'." }), { status: 500 })
+      }
+      if (!apiKey) {
+        return new Response(JSON.stringify({ error: "OPENAI_API_KEY is not set, but provider in request is 'openai'." }), { status: 500 })
+      }
+    } else {
+      return new Response(JSON.stringify({ error: "Invalid AI_PROVIDER value."}), { status: 500 })
     }
 
-    const { messages }: { messages: CoreMessage[] } = await c.req.json()
+    if (!apiKey || !baseURL) {
+      console.error("API Key or Base URL is missing unexpectedly.")
+      return new Response(JSON.stringify({ error: "Internal configuration error."}), { status: 500 })
+    }
 
-    const filteredMessages: CoreMessage[] = Array.isArray(messages)
+    const modelName = typeof modelNameFromEnv === "string" && modelNameFromEnv.trim() !== "" ? modelNameFromEnv : defaultModel
+
+    const client = clientFactory({
+      apiKey: apiKey,
+      baseURL: baseURL,
+    })
+
+    const model: LanguageModel = client(modelName)
+
+    const processedMessages: CoreMessage[] = Array.isArray(messages)
       ? messages
-          .filter((msg) => msg.role === "user" || msg.role === "assistant" || msg.role === "system")
+          .filter((msg) => msg.role === "user" || msg.role === "assistant")
           .map((msg) => ({
             role: msg.role,
             content: typeof msg.content === "string" ? msg.content : "",
           }))
       : []
 
-    if (filteredMessages.length === 0) {
-      console.error("Invalid or empty messages array after filtering.")
+    if (typeof systemPrompt === 'string' && systemPrompt.trim() !== '') {
+      processedMessages.unshift({ role: 'system', content: systemPrompt });
+    }
+
+    if (processedMessages.length === 0 || (processedMessages.length === 1 && processedMessages[0].role === 'system')) {
+      console.error("Invalid or empty messages array after processing.")
       return new Response(JSON.stringify({ error: "Invalid or empty messages format" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       })
     }
 
-    let modelName = "gpt-4.1-mini"
-    if (typeof OPENAI_MODEL === "string" && OPENAI_MODEL.trim() !== "") {
-      modelName = OPENAI_MODEL
-    }
-
-    const openai = createOpenAI({
-      apiKey: OPENAI_API_KEY,
-      baseURL: AI_GATEWAY_URL,
-    })
-
-    const model = openai(modelName)
-
     const result = streamText({
       model: model,
-      messages: filteredMessages,
+      messages: processedMessages,
+      providerOptions: {
+        ...providerOptions,
+      },
     })
 
     return result.toDataStreamResponse()
   } catch (error) {
-    console.error("Error in /api/chat:", error) // エラーログは残す
+    console.error("Error in /api/chat:", error)
     let errorMessage = "An unknown error occurred"
     const statusCode = 500
 
     if (error instanceof Error) {
       errorMessage = `Backend Error: ${error.message}`
+    } else if (typeof error === 'object' && error !== null && 'message' in error) {
+      errorMessage = `Backend Error: ${error.message}`;
+    } else {
+      errorMessage = `Backend Error: An unexpected error type occurred.`
     }
 
-    return new Response(JSON.stringify({ error: errorMessage }), {
-      status: statusCode,
-      headers: { "Content-Type": "application/json" },
-    })
+    return new Response(JSON.stringify({ error: errorMessage }), { status: statusCode })
   }
 })
 

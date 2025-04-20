@@ -12,6 +12,7 @@ import {
   Card,
   CardBody,
   ChakraProvider,
+  Collapse,
   Container,
   Divider,
   Flex,
@@ -23,8 +24,8 @@ import {
   Heading,
   HStack,
   Icon,
-  Input,
   IconButton,
+  Input,
   Link,
   ListItem,
   Show,
@@ -41,7 +42,7 @@ import "jotai-devtools/styles.css"
 import { focusAtom } from "jotai-optics"
 import { forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
-import { LuCalculator, LuCheckCircle2, LuCircle, LuCopy, LuCopyCheck, LuMessageSquare } from "react-icons/lu"
+import { LuCalculator, LuCheckCircle2, LuCircle, LuCopy, LuCopyCheck, LuMessageSquare, LuChevronsUpDown } from "react-icons/lu"
 import { VscArrowCircleDown, VscArrowCircleUp, VscClose, VscCopy } from "react-icons/vsc"
 import { v4 as uuidv4 } from "uuid"
 
@@ -55,6 +56,8 @@ import {
   cardsAtom,
   deckAtom,
   isChatOpenAtom,
+  isCardMemoExpandedAtom,
+  isLabelMemoExpandedAtom,
   labelAtom,
   locAtom,
   patternAtom,
@@ -569,6 +572,7 @@ const SuccessRates = forwardRef<HTMLDivElement>((_, ref) => {
 
 const CardList: FC = () => {
   const cards = useAtomValue(cardsAtom).cards
+  const [isExpanded, setIsExpanded] = useAtom(isCardMemoExpandedAtom)
 
   const addCard = useAtomCallback(
     useCallback((get, set) => {
@@ -577,6 +581,7 @@ const CardList: FC = () => {
         count: 1,
         name: `カード${cards.length + 1}`,
         uid: uuidv4(),
+        memo: "",
       })
       set(cardsAtom, {
         cards: newCards,
@@ -587,22 +592,33 @@ const CardList: FC = () => {
 
   return (
     <Box>
-      <Button mb={4} onClick={() => addCard()}>
-        カードを追加
-      </Button>
+      <Flex mb={4} gap={2}>
+        <Button onClick={() => addCard()}>
+          カードを追加
+        </Button>
+        <Button
+          aria-label={isExpanded ? 'カードのメモを閉じる' : 'カードのメモを開く'}
+          leftIcon={<Icon as={LuChevronsUpDown} />}
+          onClick={() => setIsExpanded(!isExpanded)}
+          variant={isExpanded ? "solid" : "outline"}
+        >
+          メモを開閉
+        </Button>
+      </Flex>
 
       <Grid gap={4} templateColumns="repeat(auto-fill, minmax(300px, 1fr))">
         {cards.map((card, index) => (
-          <CardItem index={index} key={card.uid} uid={card.uid} />
+          <CardItem index={index} key={card.uid} uid={card.uid} isExpanded={isExpanded} />
         ))}
       </Grid>
     </Box>
   )
 }
 
-const CardItem: FC<{ index: number; uid: string }> = memo(({ index, uid }) => {
+const CardItem: FC<{ index: number; uid: string; isExpanded: boolean }> = memo(({ index, uid, isExpanded }) => {
   const [card, setCard] = useCard(uid)
   const [tmpName, setTmpName] = useState(card.name)
+  const [tmpMemo, setTmpMemo] = useState(card.memo)
 
   const updateCardName = useCallback(
     (name: string) => {
@@ -614,6 +630,13 @@ const CardItem: FC<{ index: number; uid: string }> = memo(({ index, uid }) => {
   const updateCardCount = useCallback(
     (count: number) => {
       setCard({ ...card, count })
+    },
+    [card, setCard],
+  )
+
+  const updateCardMemo = useCallback(
+    (memo: string) => {
+      setCard({ ...card, memo })
     },
     [card, setCard],
   )
@@ -721,6 +744,29 @@ const CardItem: FC<{ index: number; uid: string }> = memo(({ index, uid }) => {
             />
           </FormControl>
         </Flex>
+
+        <Box mt={4}>
+          <Collapse in={isExpanded} animateOpacity>
+            <FormControl>
+              <Textarea
+                value={tmpMemo}
+                onChange={(e) => setTmpMemo(e.target.value)}
+                onBlur={() => updateCardMemo(tmpMemo)}
+                placeholder='カードに関するメモ'
+              />
+            </FormControl>
+          </Collapse>
+          {!isExpanded && tmpMemo && (
+            <Text
+              fontSize="md"
+              color="gray.600"
+              whiteSpace="pre-wrap"
+              ml={1}
+            >
+              {tmpMemo}
+            </Text>
+          )}
+        </Box>
       </CardBody>
     </Card>
   )
@@ -1357,20 +1403,37 @@ const AddPatternButton: FC = () => {
 const LabelManagement: FC = () => {
   const [labelsState, setLabelsState] = useAtom(labelAtom)
   const labels = labelsState.labels
+  const [isExpanded, setIsExpanded] = useAtom(isLabelMemoExpandedAtom)
 
   const addLabel = () => {
-    const labelToAdd = { name: `ラベル${labels.length + 1}`, uid: uuidv4() }
+    const labelToAdd = { name: `ラベル${labels.length + 1}`, uid: uuidv4(), memo: "" }
     setLabelsState({ labels: [...labels, labelToAdd] })
   }
 
   return (
     <Box mb={4}>
-      <Button mb={4} onClick={addLabel}>
-        ラベルを追加
-      </Button>
+      <Flex mb={4} gap={2}>
+        <Button onClick={addLabel}>
+          ラベルを追加
+        </Button>
+        <Button
+          aria-label={isExpanded ? 'ラベルのメモを閉じる' : 'ラベルのメモを開く'}
+          leftIcon={<Icon as={LuChevronsUpDown} />}
+          onClick={() => setIsExpanded(!isExpanded)}
+          variant={isExpanded ? "solid" : "outline"}
+        >
+          メモを開閉
+        </Button>
+      </Flex>
       <Grid gap={4} templateColumns="repeat(auto-fill, minmax(300px, 1fr))">
         {labels.map((_, index) => (
-          <Label key={index} labelIndex={index} labels={labels} setLabelsState={setLabelsState} />
+          <Label
+            key={index}
+            labelIndex={index}
+            labels={labels}
+            setLabelsState={setLabelsState}
+            isExpanded={isExpanded}
+          />
         ))}
       </Grid>
     </Box>
@@ -1381,24 +1444,27 @@ const Label: FC<{
   labelIndex: number
   labels: Array<Label>
   setLabelsState: ({ labels }: { labels: Array<Label> }) => void
-}> = ({ labelIndex, labels, setLabelsState }) => {
+  isExpanded: boolean
+}> = ({ labelIndex, labels, setLabelsState, isExpanded }) => {
   const label = labels[labelIndex]
   const [patternsState, setPatternsState] = useAtom(patternAtom)
   const patterns = patternsState.patterns
 
   const [tmpName, setTempName] = useState(label.name)
+  const [tmpMemo, setTempMemo] = useState(label.memo ?? '')
 
   useEffect(() => {
     setTempName(label.name)
+    setTempMemo(label.memo ?? '')
   }, [label])
 
   const deleteLabel = (uid: string) => {
-    const newLabels = labels.filter((label) => label.uid !== uid)
+    const newLabels = labels.filter((l) => l.uid !== uid)
     setLabelsState({ labels: newLabels })
 
     const updatedPatterns = patterns.map((pattern) => ({
       ...pattern,
-      labels: pattern.labels.filter((label) => label.uid !== uid),
+      labels: pattern.labels.filter((lbl) => lbl.uid !== uid),
     }))
     setPatternsState({
       length: updatedPatterns.length,
@@ -1406,14 +1472,14 @@ const Label: FC<{
     })
   }
 
-  const editLabel = (uid: string, newName: string) => {
-    const newLabels = labels.map((label) => {
-      if (label.uid === uid) {
-        return { ...label, name: newName }
+  const editLabel = (uid: string, newName: string, newMemo: string) => {
+    const editedLabels = labels.map((l) => {
+      if (l.uid === uid) {
+        return { ...l, name: newName, memo: newMemo }
       }
-      return label
+      return l
     })
-    setLabelsState({ labels: newLabels })
+    setLabelsState({ labels: editedLabels })
   }
 
   return (
@@ -1422,11 +1488,29 @@ const Label: FC<{
         <Flex align="center" gap={2} justify="space-between">
           <Icon as={VscClose} fontSize="xl" onClick={() => deleteLabel(label.uid)} />
           <Input
-            onBlur={(e) => editLabel(label.uid, e.target.value)}
+            onBlur={(e) => editLabel(label.uid, e.target.value, tmpMemo)}
             onChange={(e) => setTempName(e.target.value)}
             value={tmpName}
           />
         </Flex>
+
+        <Box mt={4}>
+          <Collapse in={isExpanded} animateOpacity>
+            <FormControl>
+              <Textarea
+                value={tmpMemo}
+                onChange={(e) => setTempMemo(e.target.value)}
+                onBlur={() => editLabel(label.uid, tmpName, tmpMemo)}
+                placeholder='ラベルに関するメモ'
+              />
+            </FormControl>
+          </Collapse>
+          {!isExpanded && tmpMemo && (
+            <Text fontSize="sm" color="gray.600" whiteSpace="pre-wrap">
+              {tmpMemo}
+            </Text>
+          )}
+        </Box>
       </CardBody>
     </Card>
   )
