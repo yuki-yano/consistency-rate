@@ -8,6 +8,7 @@ import { env } from "hono/adapter"
 import { CoreMessage, JSONValue, LanguageModel, streamText } from "ai"
 import { createOpenAI } from "@ai-sdk/openai"
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
+import { createXai } from "@ai-sdk/xai"
 
 type Bindings = {
   KV: KVNamespace
@@ -17,6 +18,9 @@ type Bindings = {
   OPENAI_API_KEY: string
   OPENAI_MODEL?: string
   OPENAI_AI_GATEWAY_URL?: string
+  GROK_API_KEY: string
+  GROK_MODEL?: string
+  GROK_AI_GATEWAY_URL?: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -124,17 +128,20 @@ app.post("/api/chat", async (c) => {
       OPENAI_API_KEY,
       OPENAI_MODEL,
       OPENAI_AI_GATEWAY_URL,
+      GROK_API_KEY,
+      GROK_MODEL,
+      GROK_AI_GATEWAY_URL,
     } = env(c)
 
     const { messages, provider, thinkingBudget, systemPrompt }: {
       messages: CoreMessage[];
-      provider: "google" | "openai";
+      provider: "google" | "openai" | "xai";
       thinkingBudget?: number;
       systemPrompt?: string;
     } = await c.req.json()
 
     if (!provider) {
-      return new Response(JSON.stringify({ error: "AI_PROVIDER environment variable is not set or invalid. Please set it to 'google' or 'openai'." }), {
+      return new Response(JSON.stringify({ error: "AI_PROVIDER environment variable is not set or invalid. Please set it to 'google', 'openai', or 'xai'." }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
       })
@@ -143,7 +150,7 @@ app.post("/api/chat", async (c) => {
     let baseURL: string | undefined
     let apiKey: string | undefined
     let modelNameFromEnv: string | undefined
-    let clientFactory: typeof createOpenAI | typeof createGoogleGenerativeAI
+    let clientFactory: typeof createOpenAI | typeof createGoogleGenerativeAI | typeof createXai
     let defaultModel: string
     let providerOptions: Record<string, Record<string, JSONValue>> = {}
 
@@ -184,13 +191,39 @@ app.post("/api/chat", async (c) => {
       if (!apiKey) {
         return new Response(JSON.stringify({ error: "OPENAI_API_KEY is not set, but provider in request is 'openai'." }), { status: 500 })
       }
+    } else if (provider === "xai") {
+      apiKey = GROK_API_KEY
+      modelNameFromEnv = GROK_MODEL
+      clientFactory = createXai
+      defaultModel = "grok-3-mini-beta"
+
+      baseURL = GROK_AI_GATEWAY_URL
+
+      // Check if the Grok gateway URL is set
+      if (baseURL == null || baseURL.trim() === "") {
+        return new Response(JSON.stringify({ error: "GROK_AI_GATEWAY_URL must be set when using xai provider." }), { status: 500 });
+      }
+
+      providerOptions = {
+        xai: {
+          reasoning_effort: "high",
+        },
+      }
+      if (apiKey == null || apiKey === "") {
+        return new Response(JSON.stringify({ error: "GROK_API_KEY is not set, but provider in request is 'xai'." }), { status: 500 })
+      }
     } else {
       return new Response(JSON.stringify({ error: "Invalid AI_PROVIDER value."}), { status: 500 })
     }
 
-    if (!apiKey || !baseURL) {
-      console.error("API Key or Base URL is missing unexpectedly.")
-      return new Response(JSON.stringify({ error: "Internal configuration error."}), { status: 500 })
+    // BaseURL check - already handles null/empty baseURL from provider logic
+    if (baseURL == null || baseURL === "") {
+      console.error("Base URL is missing unexpectedly.")
+      return new Response(JSON.stringify({ error: "Internal configuration error: Missing Base URL."}), { status: 500 })
+    }
+    if (apiKey == null || apiKey === "") {
+      console.error("API Key is missing unexpectedly.")
+      return new Response(JSON.stringify({ error: "Internal configuration error: Missing API Key."}), { status: 500 })
     }
 
     const modelName = typeof modelNameFromEnv === "string" && modelNameFromEnv.trim() !== "" ? modelNameFromEnv : defaultModel

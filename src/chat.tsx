@@ -146,6 +146,7 @@ const ChatUIInternal: FC = () => {
   const [aiProvider, setAiProvider] = useAtom(aiProviderAtom);
   const { thinkingBudget, setThinkingBudget } = useChatContext();
   const { isOpen, onOpen, onClose } = useDisclosure();
+  const [lastSentState, setLastSentState] = useState<object | null>(null);
 
   const {
     messages,
@@ -273,11 +274,26 @@ const ChatUIInternal: FC = () => {
     if (!input.trim() || isLoading) {
       return;
     }
-    const stateString = JSON.stringify(currentState, null, 2);
-    const combinedContent = `${input}\n\n--- Current State ---\n\`\`\`json\n${stateString}\n\`\`\``;
-    void append({ role: "user", content: combinedContent });
+
+    const currentStateString = JSON.stringify(currentState, null, 2);
+    const lastSentStateString = lastSentState ? JSON.stringify(lastSentState, null, 2) : null;
+    let contentToSend = input;
+    let shouldSendState = false;
+
+    if (lastSentStateString === null || currentStateString !== lastSentStateString) {
+        contentToSend = `${input}\n\n--- Current State ---\n\`\`\`json\n${currentStateString}\n\`\`\``;
+        shouldSendState = true;
+    } else {
+        contentToSend = input;
+    }
+
+    void append({ role: "user", content: contentToSend });
     setInput("");
     setShouldAutoScroll(true);
+
+    if (shouldSendState) {
+      setLastSentState(currentState);
+    }
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -288,8 +304,9 @@ const ChatUIInternal: FC = () => {
   };
 
   const handleProviderChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    setAiProvider(event.target.value as "google" | "openai");
-    if (event.target.value !== 'google') {
+    const newProvider = event.target.value as "google" | "openai" | "xai";
+    setAiProvider(newProvider);
+    if (newProvider !== 'google') {
       setThinkingBudget(0);
     }
   };
@@ -484,6 +501,7 @@ const ChatUIInternal: FC = () => {
               >
                 <option value="google">Google</option>
                 <option value="openai">OpenAI</option>
+                <option value="xai">Grok (xAI)</option>
               </Select>
             </FormControl>
 
