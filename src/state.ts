@@ -22,7 +22,7 @@ export type CardData = {
   memo: string
 }
 
-export type PatternMode = "leave_deck" | "not_drawn" | "required"
+export type PatternMode = "leave_deck" | "not_drawn" | "required" | "required_distinct"
 
 export type Condition = {
   count: number

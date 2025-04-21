@@ -105,6 +105,9 @@ const checkSinglePattern = (
   const requiredConditions: ReadonlyArray<Pattern["conditions"][number]> = pattern.conditions.filter(
     (c) => c.mode === "required",
   )
+  const requiredDistinctConditions: ReadonlyArray<Pattern["conditions"][number]> = pattern.conditions.filter(
+    (c) => c.mode === "required_distinct",
+  )
   const leaveDeckConditions: ReadonlyArray<Pattern["conditions"][number]> = pattern.conditions.filter(
     (c) => c.mode === "leave_deck",
   )
@@ -121,7 +124,20 @@ const checkSinglePattern = (
     }
   }
 
-  // 2. Check 'required' conditions using backtracking
+  // 2. Check 'required_distinct' conditions (check for distinct cards)
+  for (const condition of requiredDistinctConditions) {
+    let distinctCardsFound = 0
+    for (const uid of condition.uids) {
+      if ((handComposition[uid] || 0) > 0) {
+        distinctCardsFound++
+      }
+    }
+    if (distinctCardsFound < condition.count) {
+      return false // Not enough distinct cards found
+    }
+  }
+
+  // 3. Check 'required' conditions using backtracking
   // Start checking from the first condition (index 0), first slot (index 1)
   if (requiredConditions.length > 0) {
     const handCopy = { ...handComposition } // Pass a copy to the recursive function
@@ -131,7 +147,7 @@ const checkSinglePattern = (
     // Note: We don't need the modified handCopy after this check.
   }
 
-  // 3. Check 'leave_deck' conditions using backtracking
+  // 4. Check 'leave_deck' conditions using backtracking
   // Start checking from the first condition (index 0), first slot (index 1)
   if (leaveDeckConditions.length > 0) {
     const deckCopy = { ...remainingDeckComposition } // Pass a copy

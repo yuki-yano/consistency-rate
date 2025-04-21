@@ -860,6 +860,7 @@ const ConditionInput: FC<{
             }}
             options={[
               { label: "以上ドロー", value: "required" },
+              { label: "重複なしドロー", value: "required_distinct" },
               { label: "以上デッキに残す", value: "leave_deck" },
               { label: "ドローなし", value: "not_drawn" },
             ]}
@@ -868,9 +869,11 @@ const ConditionInput: FC<{
                 label:
                   condition.mode === "required"
                     ? "以上ドロー"
-                    : condition.mode === "leave_deck"
-                      ? "以上デッキに残す"
-                      : "ドローなし",
+                    : condition.mode === "required_distinct"
+                      ? "重複なしドロー"
+                      : condition.mode === "leave_deck"
+                        ? "以上デッキに残す"
+                        : "ドローなし",
                 value: condition.mode,
               },
             ]}
