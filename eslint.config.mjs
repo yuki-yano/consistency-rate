@@ -36,6 +36,7 @@ export default [
   ...tseslint.configs.recommended,
   pluginReactConfig,
   pluginReactJSXRuntime,
+  // pluginPerfectionist.configs["recommended-natural"],
   eslintConfigPrettier,
   {
     plugins: {

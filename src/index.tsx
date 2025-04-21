@@ -1,26 +1,26 @@
+import { createGoogleGenerativeAI } from "@ai-sdk/google"
+import { createOpenAI } from "@ai-sdk/openai"
+import { createXai } from "@ai-sdk/xai"
 import { zValidator } from "@hono/zod-validator"
+import { CoreMessage, JSONValue, LanguageModel, streamText } from "ai"
 import { Hono } from "hono"
+import { env } from "hono/adapter"
 import { csrf } from "hono/csrf"
 import { renderToString } from "react-dom/server"
 import { v4 as uuidv4 } from "uuid"
 import { z } from "zod"
-import { env } from "hono/adapter"
-import { CoreMessage, JSONValue, LanguageModel, streamText } from "ai"
-import { createOpenAI } from "@ai-sdk/openai"
-import { createGoogleGenerativeAI } from "@ai-sdk/google"
-import { createXai } from "@ai-sdk/xai"
 
 type Bindings = {
-  KV: KVNamespace
   GEMINI_API_KEY: string
   GEMINI_MODEL?: string
   GOOGLE_AI_GATEWAY_URL?: string
-  OPENAI_API_KEY: string
-  OPENAI_MODEL?: string
-  OPENAI_AI_GATEWAY_URL?: string
+  GROK_AI_GATEWAY_URL?: string
   GROK_API_KEY: string
   GROK_MODEL?: string
-  GROK_AI_GATEWAY_URL?: string
+  KV: KVNamespace
+  OPENAI_AI_GATEWAY_URL?: string
+  OPENAI_API_KEY: string
+  OPENAI_MODEL?: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -77,7 +77,7 @@ app.get("/short_url/:key{[0-9a-z]{8}}", async (c) => {
 
     return c.redirect(redirectUrl.toString())
   } catch (e) {
-    console.error("Invalid URL stored in KV:", storedUrlString, e)
+    console.error(`Error in /short_url/:key{[0-9a-z]{8}} (${c.req.path}): Invalid URL stored in KV:`, storedUrlString, e)
     return c.redirect("/")
   }
 })
@@ -115,15 +115,15 @@ app.post("/api/shorten_url/create", csrf(), shortenUrlValidator, async (c) => {
       shortenUrl.searchParams.set("mode", modeParam);
     }
   } catch (e) {
-    console.error("Invalid original URL format:", url, e);
+    console.error(`Error in /api/shorten_url/create (${c.req.path}): Invalid original URL format:`, url, e);
   }
 
   return c.json({ shortenUrl: shortenUrl.toString() })
 })
 
 const chatMessageSchema = z.object({
-  role: z.enum(["user", "assistant", "system"]),
   content: z.string(),
+  role: z.enum(["user", "assistant", "system"]),
 });
 
 const chatHistorySchema = z.object({
@@ -152,7 +152,7 @@ app.post("/api/chat/history", chatHistoryValidator, async (c) => {
     const key = await createChatHistoryKey(c.env.KV, messages);
     return c.json({ key: key });
   } catch (error) {
-    console.error("Failed to save chat history:", error);
+    console.error(`Error in /api/chat/history (${c.req.path}): Failed to save chat history:`, error);
     return c.json({ error: "Failed to save chat history" }, 500);
   }
 });
@@ -188,7 +188,7 @@ app.get("/api/chat/history/:key{[0-9a-z]{8}}", async (c) => {
       }
     } catch (parseError) {
       console.error(
-        "Failed to parse chat history from KV for key:",
+        `Error in /api/chat/history/:key{[0-9a-z]{8}} (${c.req.path}): Failed to parse chat history from KV for key:`,
         prefixedKey,
         parseError,
       );
@@ -197,7 +197,7 @@ app.get("/api/chat/history/:key{[0-9a-z]{8}}", async (c) => {
       return c.json({ error: "Failed to parse chat history" }, 500);
     }
   } catch (error) {
-    console.error("Failed to retrieve chat history:", error);
+    console.error(`Error in /api/chat/history/:key{[0-9a-z]{8}} (${c.req.path}): Failed to retrieve chat history:`, error);
     return c.json({ error: "Failed to retrieve chat history" }, 500);
   }
 });
@@ -208,32 +208,32 @@ app.post("/api/chat", async (c) => {
       GEMINI_API_KEY,
       GEMINI_MODEL,
       GOOGLE_AI_GATEWAY_URL,
-      OPENAI_API_KEY,
-      OPENAI_MODEL,
-      OPENAI_AI_GATEWAY_URL,
+      GROK_AI_GATEWAY_URL,
       GROK_API_KEY,
       GROK_MODEL,
-      GROK_AI_GATEWAY_URL,
+      OPENAI_AI_GATEWAY_URL,
+      OPENAI_API_KEY,
+      OPENAI_MODEL,
     } = env(c)
 
-    const { messages, provider, thinkingBudget, systemPrompt }: {
+    const { messages, provider, systemPrompt, thinkingBudget }: {
       messages: CoreMessage[];
       provider: "google" | "openai" | "xai";
-      thinkingBudget?: number;
       systemPrompt?: string;
+      thinkingBudget?: number;
     } = await c.req.json()
 
     if (!provider) {
       return new Response(JSON.stringify({ error: "AI_PROVIDER environment variable is not set or invalid. Please set it to 'google', 'openai', or 'xai'." }), {
-        status: 500,
         headers: { "Content-Type": "application/json" },
+        status: 500,
       })
     }
 
     let baseURL: string | undefined
     let apiKey: string | undefined
     let modelNameFromEnv: string | undefined
-    let clientFactory: typeof createOpenAI | typeof createGoogleGenerativeAI | typeof createXai
+    let clientFactory: typeof createGoogleGenerativeAI | typeof createOpenAI | typeof createXai
     let defaultModel: string
     let providerOptions: Record<string, Record<string, JSONValue>> = {}
 
@@ -252,9 +252,11 @@ app.post("/api/chat", async (c) => {
         },
       }
       if (baseURL == null) {
+        console.error(`Error in /api/chat (${c.req.path}): GOOGLE_AI_GATEWAY_URL is not set, but provider in request is 'google'.`);
         return new Response(JSON.stringify({ error: "GOOGLE_AI_GATEWAY_URL is not set, but provider in request is 'google'." }), { status: 500 })
       }
       if (!apiKey) {
+        console.error(`Error in /api/chat (${c.req.path}): GEMINI_API_KEY is not set, but provider in request is 'google'.`);
         return new Response(JSON.stringify({ error: "GEMINI_API_KEY is not set, but provider in request is 'google'." }), { status: 500 })
       }
     } else if (provider === "openai") {
@@ -269,9 +271,11 @@ app.post("/api/chat", async (c) => {
         },
       }
       if (baseURL == null) {
+        console.error(`Error in /api/chat (${c.req.path}): OPENAI_AI_GATEWAY_URL is not set, but provider in request is 'openai'.`);
         return new Response(JSON.stringify({ error: "OPENAI_AI_GATEWAY_URL is not set, but provider in request is 'openai'." }), { status: 500 })
       }
       if (!apiKey) {
+        console.error(`Error in /api/chat (${c.req.path}): OPENAI_API_KEY is not set, but provider in request is 'openai'.`);
         return new Response(JSON.stringify({ error: "OPENAI_API_KEY is not set, but provider in request is 'openai'." }), { status: 500 })
       }
     } else if (provider === "xai") {
@@ -284,6 +288,7 @@ app.post("/api/chat", async (c) => {
 
       // Check if the Grok gateway URL is set
       if (baseURL == null || baseURL.trim() === "") {
+        console.error(`Error in /api/chat (${c.req.path}): GROK_AI_GATEWAY_URL must be set when using xai provider.`);
         return new Response(JSON.stringify({ error: "GROK_AI_GATEWAY_URL must be set when using xai provider." }), { status: 500 });
       }
 
@@ -293,6 +298,7 @@ app.post("/api/chat", async (c) => {
         },
       }
       if (apiKey == null || apiKey === "") {
+        console.error(`Error in /api/chat (${c.req.path}): GROK_API_KEY is not set, but provider in request is 'xai'.`);
         return new Response(JSON.stringify({ error: "GROK_API_KEY is not set, but provider in request is 'xai'." }), { status: 500 })
       }
     } else {
@@ -301,11 +307,11 @@ app.post("/api/chat", async (c) => {
 
     // BaseURL check - already handles null/empty baseURL from provider logic
     if (baseURL == null || baseURL === "") {
-      console.error("Base URL is missing unexpectedly.")
+      console.error(`Error in /api/chat (${c.req.path}): Base URL is missing unexpectedly.`)
       return new Response(JSON.stringify({ error: "Internal configuration error: Missing Base URL."}), { status: 500 })
     }
     if (apiKey == null || apiKey === "") {
-      console.error("API Key is missing unexpectedly.")
+      console.error(`Error in /api/chat (${c.req.path}): API Key is missing unexpectedly.`)
       return new Response(JSON.stringify({ error: "Internal configuration error: Missing API Key."}), { status: 500 })
     }
 
@@ -322,26 +328,26 @@ app.post("/api/chat", async (c) => {
       ? messages
           .filter((msg) => msg.role === "user" || msg.role === "assistant")
           .map((msg) => ({
-            role: msg.role,
             content: typeof msg.content === "string" ? msg.content : "",
+            role: msg.role,
           }))
       : []
 
     if (typeof systemPrompt === 'string' && systemPrompt.trim() !== '') {
-      processedMessages.unshift({ role: 'system', content: systemPrompt });
+      processedMessages.unshift({ content: systemPrompt, role: 'system' });
     }
 
     if (processedMessages.length === 0 || (processedMessages.length === 1 && processedMessages[0].role === 'system')) {
-      console.error("Invalid or empty messages array after processing.")
+      console.error(`Error in /api/chat (${c.req.path}): Invalid or empty messages array after processing.`)
       return new Response(JSON.stringify({ error: "Invalid or empty messages format" }), {
-        status: 400,
         headers: { "Content-Type": "application/json" },
+        status: 400,
       })
     }
 
     const result = streamText({
-      model: model,
       messages: processedMessages,
+      model: model,
       providerOptions: {
         ...providerOptions,
       },
@@ -349,7 +355,7 @@ app.post("/api/chat", async (c) => {
 
     return result.toDataStreamResponse()
   } catch (error) {
-    console.error("Error in /api/chat:", error)
+    console.error(`Error in /api/chat (${c.req.path}):`, error)
     let errorMessage = "An unknown error occurred"
     const statusCode = 500
 

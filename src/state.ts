@@ -1,8 +1,10 @@
 import type { Message } from "@ai-sdk/react"
+
 import { atom } from "jotai"
-import { atomWithHash, atomWithLocation } from "jotai-location"
 import { atomWithStorage } from "jotai/utils"
+import { atomWithHash, atomWithLocation } from "jotai-location"
 import lzstring from "lz-string"
+
 import { SYSTEM_PROMPT_MESSAGE } from "./const"
 
 export type DeckState = {
@@ -17,9 +19,9 @@ export type CardsState = {
 
 export type CardData = {
   count: number
+  memo: string
   name: string
   uid: string
-  memo: string
 }
 
 export type PatternMode = "leave_deck" | "not_drawn" | "required" | "required_distinct"
@@ -50,9 +52,9 @@ export type PatternState = {
 }
 
 export type Label = {
+  memo: string
   name: string
   uid: string
-  memo: string
 }
 
 export type LabelState = {
@@ -109,50 +111,70 @@ const defaultPotState: PotState = {
 }
 
 // urlSerializeOptions を生成する関数に変更
-const createUrlSerializeOptions = <T>(defaultValue: T) => ({
+const createUrlSerializeOptions = <T>(defaultValue: T, key?: string) => ({
+  delay: 0,
   deserialize: (value: string): T => {
     try {
       const decompressed = lzstring.decompressFromBase64(value)
-      // null または空文字列チェック
       if (decompressed == null || decompressed.trim() === "") {
-        // console.warn("Decompressed value is null or empty, returning default.");
         return defaultValue
       }
-      return JSON.parse(decompressed) as T
+      const parsedValue: unknown = JSON.parse(decompressed)
+
+      // patternAtom の場合のみ expanded を false に設定
+      if (
+        key === "pattern" &&
+        typeof parsedValue === 'object' &&
+        parsedValue !== null &&
+        Object.prototype.hasOwnProperty.call(parsedValue, 'length') &&
+        typeof (parsedValue as { length: unknown }).length === 'number' &&
+        Object.prototype.hasOwnProperty.call(parsedValue, 'patterns') &&
+        Array.isArray((parsedValue as { patterns: unknown }).patterns)
+      ) {
+        const patternState = parsedValue as PatternState
+        patternState.patterns = patternState.patterns.map(
+          (pattern) => ({
+            ...pattern,
+            expanded: false,
+          })
+        )
+        return patternState as T
+      }
+
+      return parsedValue as T
     } catch (e) {
-      // パースエラー時もデフォルト値を返す
-      console.error("Failed to parse URL hash, returning default value:", e)
+      console.error(`Error deserializing ${key} from URL hash, returning default value:`, e)
       return defaultValue
     }
   },
   serialize: (value: T) => lzstring.compressToBase64(JSON.stringify(value)),
-  delay: 0,
 })
 
 export const locAtom = atomWithLocation()
 
 // 各 atomWithHash で createUrlSerializeOptions を使用し、デフォルト値を渡す
-export const deckAtom = atomWithHash<DeckState>("deck", defaultDeckState, createUrlSerializeOptions(defaultDeckState))
+// key 引数を追加して、どの atom かを deserialize 内で判別できるようにする
+export const deckAtom = atomWithHash<DeckState>("deck", defaultDeckState, createUrlSerializeOptions(defaultDeckState, "deck"))
 
 export const cardsAtom = atomWithHash<CardsState>(
   "cards",
   defaultCardsState,
-  createUrlSerializeOptions(defaultCardsState),
+  createUrlSerializeOptions(defaultCardsState, "cards"),
 )
 
 export const patternAtom = atomWithHash<PatternState>(
   "pattern",
   defaultPatternState,
-  createUrlSerializeOptions(defaultPatternState),
+  createUrlSerializeOptions(defaultPatternState, "pattern"),
 )
 
 export const labelAtom = atomWithHash<LabelState>(
   "label",
   defaultLabelState,
-  createUrlSerializeOptions(defaultLabelState),
+  createUrlSerializeOptions(defaultLabelState, "label"),
 )
 
-export const potAtom = atomWithHash<PotState>("pot", defaultPotState, createUrlSerializeOptions(defaultPotState))
+export const potAtom = atomWithHash<PotState>("pot", defaultPotState, createUrlSerializeOptions(defaultPotState, "pot"))
 
 export const calculationResultAtom = atom<CalculationResultState | null>(null)
 

@@ -1,8 +1,6 @@
 import type { Message } from "@ai-sdk/react"
 
 export const SYSTEM_PROMPT_MESSAGE: Message = {
-  id: "system-prompt-initial",
-  role: "system",
   content: `#役割
 あなたは遊戯王のデッキ構築と初動率計算を支援するAIアシスタントです。ユーザーの自然言語による指示を解析し、初動率計算ツールで利用可能なJSON形式の状態オブジェクトを生成します。
 
@@ -38,10 +36,11 @@ type CardData = {
 };
 
 // PatternMode: パターンの条件モード
-type PatternMode = "leave_deck" | "not_drawn" | "required";
+type PatternMode = "leave_deck" | "not_drawn" | "required" | "required_distinct";
 // leave_deck: 指定枚数以上をデッキに残す
 // not_drawn: 指定したカードをドローしない
 // required: 指定枚数以上をドローする
+// required_distinct: 指定枚数以上をドローするが、同じカードを2枚持っていてもカウントしない
 
 // Condition: パターンの成立条件
 type Condition = {
@@ -550,4 +549,6 @@ type StateMap = {
 }
 \`\`\`
 `,
+  id: "system-prompt-initial",
+  role: "system",
 }

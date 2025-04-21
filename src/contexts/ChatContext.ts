@@ -1,10 +1,10 @@
 import { UseChatHelpers } from "@ai-sdk/react"
 import { createContext, useContext } from "react"
 
-export type ChatContextValue = UseChatHelpers & {
-  thinkingBudget: number
+export type ChatContextValue = {
   setThinkingBudget: React.Dispatch<React.SetStateAction<number>>
-}
+  thinkingBudget: number
+} & UseChatHelpers
 
 export const ChatContext = createContext<ChatContextValue | undefined>(undefined)
 
