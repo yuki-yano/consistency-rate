@@ -23,16 +23,35 @@ import {
   ModalBody,
   ModalCloseButton,
   useDisclosure,
+  HStack,
+  Input,
 } from "@chakra-ui/react"
 import { useSetAtom, useAtomValue, useAtom } from "jotai"
 import { VscClose } from "react-icons/vsc"
+import { FiCopy } from "react-icons/fi"
 import TextareaAutosize from 'react-textarea-autosize';
 import { useChat } from "@ai-sdk/react"
-import { ChatContext, useChatContext } from "./chatContext"
+import { useChatContext, ChatContext } from "./chatContext"
 
 import { isChatOpenAtom, aiProviderAtom, systemPromptAtom, chatMessagesAtom, deckAtom, cardsAtom, patternAtom, potAtom, labelAtom } from "./state";
 import { SYSTEM_PROMPT_MESSAGE } from "./const";
 import type { CardsState, PatternState, LabelState } from "./state"
+import { CoreMessage } from "ai";
+import { v4 as uuidv4 } from "uuid";
+
+interface SaveHistorySuccessResponse {
+  key: string;
+}
+interface SaveHistoryErrorResponse {
+  error: string;
+}
+
+interface RestoreHistorySuccessResponse {
+  messages: CoreMessage[];
+}
+interface RestoreHistoryErrorResponse {
+  error: string;
+}
 
 export const ChatProvider: FC<{ children: React.ReactNode }> = ({ children }) => {
   const [persistedMessages] = useAtom(chatMessagesAtom);
@@ -120,14 +139,14 @@ const SystemPromptModal: FC<{
           <Button variant="ghost" mr={3} onClick={onClose} size="sm">
             キャンセル
           </Button>
-          <Button 
-            colorScheme="blue" 
+          <Button
+            colorScheme="blue"
             bg="blue.500"
             color="white"
             _hover={{
               bg: 'blue.600',
             }}
-            onClick={handleSave} 
+            onClick={handleSave}
             size="sm"
           >
             保存
@@ -147,6 +166,12 @@ const ChatUIInternal: FC = () => {
   const { thinkingBudget, setThinkingBudget } = useChatContext();
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [lastSentState, setLastSentState] = useState<object | null>(null);
+  const [savedHistoryKey, setSavedHistoryKey] = useState<string | null>(null);
+  const [isSavingHistory, setIsSavingHistory] = useState(false);
+  const [showRestoreInput, setShowRestoreInput] = useState(false);
+  const [historyIdToRestore, setHistoryIdToRestore] = useState("");
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [historyJustRestored, setHistoryJustRestored] = useState(false);
 
   const {
     messages,
@@ -158,6 +183,7 @@ const ChatUIInternal: FC = () => {
     reload,
     append,
     setInput,
+    setMessages,
   } = useChatContext();
 
   const deck = useAtomValue(deckAtom);
@@ -173,8 +199,10 @@ const ChatUIInternal: FC = () => {
     label,
   }), [deck, cards, pattern, pot, label]);
 
+  const nonSystemMessages = useMemo(() => messages.filter(m => m.role !== 'system'), [messages]);
+
   const lastAssistantMessageContent = useMemo(() => {
-    const lastMessage = messages[messages.length - 1];
+    const lastMessage = nonSystemMessages[nonSystemMessages.length - 1];
     if (lastMessage?.role === 'assistant') {
       const codeBlockRegex = /```json\n?([\s\S]*?)\n?```/;
       const match = lastMessage.content.match(codeBlockRegex);
@@ -184,16 +212,13 @@ const ChatUIInternal: FC = () => {
         try {
           JSON.parse(potentialJson);
           return potentialJson;
-        } catch (e) {
-          console.error("Extracted content is not valid JSON:", potentialJson, e);
+        } catch {
           return null;
         }
-      } else {
-        // console.log("No JSON code block found in last assistant message:", lastMessage.content);
       }
     }
     return null;
-  }, [messages]);
+  }, [nonSystemMessages]);
 
   useEffect(() => {
     const element = scrollRef.current
@@ -236,13 +261,12 @@ const ChatUIInternal: FC = () => {
       const validateItems = (items: Array<{ name?: string } | undefined> | undefined, itemType: string): string | null => {
         if (!items) return null;
         for (const item of items) {
-          if (!item || typeof item.name !== 'string' || item.name.trim() === '') {
+          if (item && (typeof item.name !== 'string' || item.name.trim() === '')) {
             return `${itemType}情報に必須の'name'プロパティがないか、空です。`;
           }
         }
         return null;
       };
-
       const cardsError = validateItems((stateToInject.cards as CardsState | undefined)?.cards, "カード");
       const patternsError = validateItems((stateToInject.pattern as PatternState | undefined)?.patterns, "パターン");
       const labelsError = validateItems((stateToInject.label as LabelState | undefined)?.labels, "ラベル");
@@ -251,11 +275,13 @@ const ChatUIInternal: FC = () => {
       if (validationError !== null) {
         console.warn("State validation error:", validationError);
         toast({ title: "適用エラー", description: validationError, status: "error", duration: 5000, isClosable: true })
-        return; 
+        return;
       }
 
       if (window.injectFromState != null) {
         window.injectFromState(stateToInject)
+        setSavedHistoryKey(null);
+        setHistoryJustRestored(false);
         toast({ title: "成功", description: "状態が適用されました。", status: "success", duration: 3000, isClosable: true })
       } else {
         throw new Error("injectFromState関数が見つかりません。")
@@ -290,6 +316,8 @@ const ChatUIInternal: FC = () => {
     void append({ role: "user", content: contentToSend });
     setInput("");
     setShouldAutoScroll(true);
+    setSavedHistoryKey(null);
+    setHistoryJustRestored(false);
 
     if (shouldSendState) {
       setLastSentState(currentState);
@@ -309,13 +337,140 @@ const ChatUIInternal: FC = () => {
     if (newProvider !== 'google') {
       setThinkingBudget(0);
     }
+    setSavedHistoryKey(null);
   };
 
   const handleThinkingBudgetChange = (event: ChangeEvent<HTMLSelectElement>) => {
     setThinkingBudget(parseInt(event.target.value, 10));
+    setSavedHistoryKey(null);
   };
 
-  const nonSystemMessages = useMemo(() => messages.filter(m => m.role !== 'system'), [messages]);
+  const handleSaveHistory = async () => {
+    if (nonSystemMessages.length === 0 || isSavingHistory) return;
+
+    setIsSavingHistory(true);
+    setSavedHistoryKey(null);
+
+    try {
+      const response = await fetch('/api/chat/history', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ messages: nonSystemMessages }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json() as SaveHistoryErrorResponse;
+        const errorMessage = typeof errorData === 'object' && errorData !== null && typeof errorData.error === 'string'
+          ? errorData.error
+          : `HTTP error! status: ${response.status}`;
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json() as SaveHistorySuccessResponse;
+      if (typeof data === 'object' && data !== null && typeof data.key === 'string' && data.key.trim() !== '') {
+        setSavedHistoryKey(data.key);
+        toast({
+          title: "履歴保存成功",
+          description: `キー: ${data.key}`,
+          status: "success",
+          duration: 3000,
+          isClosable: true,
+        });
+      } else {
+        console.error("Invalid response format from /api/chat/history:", data);
+        throw new Error("サーバーから有効なキーが返されませんでした。");
+      }
+    } catch (error) {
+      console.error("Failed to save chat history:", error);
+      const description = error instanceof Error ? error.message : "履歴の保存中に不明なエラーが発生しました。";
+      toast({ title: "履歴保存エラー", description, status: "error", duration: 5000, isClosable: true });
+    } finally {
+      setIsSavingHistory(false);
+    }
+  };
+
+  const handleCopyToClipboard = (key: string) => {
+    navigator.clipboard.writeText(key)
+      .then(() => {
+        toast({
+          title: "コピーしました",
+          description: `キー "${key}" をクリップボードにコピーしました。`,
+          status: "info",
+          duration: 2000,
+          isClosable: true,
+        });
+      })
+      .catch((err) => {
+        console.error("Failed to copy key:", err);
+        toast({
+          title: "コピー失敗",
+          description: "クリップボードへのコピーに失敗しました。",
+          status: "error",
+          duration: 3000,
+          isClosable: true,
+        });
+      });
+  };
+
+  const isHistoryIdValid = useMemo(() => {
+    const regex = /^[0-9a-z]{8}$/;
+    return regex.test(historyIdToRestore);
+  }, [historyIdToRestore]);
+
+  const handleRestoreHistory = async () => {
+    if (!historyIdToRestore.trim() || isRestoring) return;
+    setIsRestoring(true);
+
+    try {
+      const response = await fetch(`/api/chat/history/${historyIdToRestore}`);
+
+      if (!response.ok) {
+        const errorData = await response.json() as RestoreHistoryErrorResponse;
+        const errorMessage = errorData?.error || `復元エラー (${response.status}): ${response.statusText}`;
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json() as RestoreHistorySuccessResponse;
+
+      if (data?.messages != null && Array.isArray(data.messages)) {
+        const formattedMessages = data.messages
+          .filter(msg => msg.role !== 'tool' && typeof msg.content === 'string')
+          .map(msg => ({
+              id: uuidv4(),
+              role: msg.role as 'system' | 'user' | 'assistant',
+              content: msg.content as string,
+          }));
+        setMessages(formattedMessages);
+        toast({
+          title: "成功",
+          description: "履歴を復元しました。",
+          status: "success",
+          duration: 3000,
+          isClosable: true
+        });
+        setShowRestoreInput(false);
+        setHistoryIdToRestore("");
+        setHistoryJustRestored(true);
+      } else {
+        console.error("Invalid response format from /api/chat/history/KEY:", data);
+        throw new Error("サーバーから無効な履歴データ形式が返されました。");
+      }
+    } catch (err) {
+      console.error("Failed to restore history:", err);
+      const description = err instanceof Error ? err.message : "履歴の復元に失敗しました。";
+      toast({
+        title: "復元エラー",
+        description: description,
+        status: "error",
+        duration: 5000,
+        isClosable: true
+      });
+    } finally {
+      setIsRestoring(false);
+    }
+  };
 
   return (
     <Box
@@ -360,29 +515,85 @@ const ChatUIInternal: FC = () => {
              <Text color="gray.500" textAlign="center" mb={4}>
                メッセージを送信してください。
              </Text>
-             <Button 
-               onClick={onOpen} 
-               size="sm" 
-               colorScheme="blue"
-               bg="blue.500"
-               color="white"
-               _hover={{
-                 bg: 'blue.600',
-               }}
-               disabled={isLoading}
-               _disabled={{
-                 bg: 'blue.300',
-                 color: 'white',
-                 cursor: 'not-allowed',
-                 opacity: 0.7,
-               }}
-             >
-               システムプロンプトを編集
-             </Button>
+             <VStack spacing={3} align="stretch" width={{ base: "80%", sm: "250px" }}>
+               <Button
+                 onClick={onOpen}
+                 size="sm"
+                 variant="outline"
+                 colorScheme="gray"
+                 disabled={isLoading}
+                 _disabled={{
+                   bg: 'blue.300',
+                   color: 'white',
+                   cursor: 'not-allowed',
+                   opacity: 0.7,
+                 }}
+               >
+                 システムプロンプトを編集
+               </Button>
+
+               {!showRestoreInput ? (
+                 <Button
+                   onClick={() => setShowRestoreInput(true)}
+                   size="sm"
+                   variant="outline"
+                   colorScheme="gray"
+                 >
+                   履歴を復元
+                 </Button>
+               ) : (
+                 <VStack spacing={2} align="stretch">
+                   <Input
+                     placeholder="履歴ID (英数字8桁)"
+                     size="sm"
+                     value={historyIdToRestore}
+                     onChange={(e) => setHistoryIdToRestore(e.target.value)}
+                     disabled={isRestoring}
+                     focusBorderColor="teal.500"
+                     isInvalid={historyIdToRestore.length > 0 && !isHistoryIdValid}
+                     errorBorderColor="red.300"
+                   />
+                   <HStack spacing={2}>
+                     <Button
+                       onClick={handleRestoreHistory}
+                       isLoading={isRestoring}
+                       loadingText="復元中"
+                       size="sm"
+                       colorScheme="teal"
+                       bg="teal.500"
+                       color="white"
+                       _hover={{ bg: 'teal.600' }}
+                       flex={1}
+                       isDisabled={!isHistoryIdValid || isRestoring}
+                       _disabled={{
+                         bg: 'teal.400',
+                         color: 'white',
+                         cursor: 'not-allowed',
+                         opacity: 0.7,
+                       }}
+                     >
+                       復元
+                     </Button>
+                     <Button
+                       onClick={() => {
+                         setShowRestoreInput(false);
+                         setHistoryIdToRestore("");
+                       }}
+                       size="sm"
+                       variant="outline"
+                       colorScheme="gray"
+                       disabled={isRestoring}
+                       flex={1}
+                     >
+                       キャンセル
+                     </Button>
+                   </HStack>
+                 </VStack>
+               )}
+             </VStack>
            </Flex>
         )}
-        {messages
-          .filter(m => m.role !== 'system')
+        {nonSystemMessages
           .map((m, index) => {
             const isAiAssistant = m.role === 'assistant';
             const isUser = m.role === 'user';
@@ -528,32 +739,77 @@ const ChatUIInternal: FC = () => {
           </Flex>
         )}
 
-        <Flex justify="flex-end" mb={3}>
+        <HStack width="full" mb={3} spacing={2}>
+          {nonSystemMessages.length > 0 && !isLoading && !historyJustRestored && (
+            savedHistoryKey !== null ? (
+              <Flex
+                align="center"
+                justify="space-between"
+                bg="gray.100"
+                borderRadius="md"
+                px={3}
+                py={1.5}
+                width="auto"
+                flexGrow={1}
+              >
+                <Text fontSize="xs" fontWeight="medium" mr={2} whiteSpace="nowrap" overflow="hidden" textOverflow="ellipsis">
+                  履歴キー: {savedHistoryKey}
+                </Text>
+                <Button
+                  aria-label="キーをコピー"
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => handleCopyToClipboard(savedHistoryKey)}
+                  colorScheme="gray"
+                  leftIcon={<Icon as={FiCopy} />}
+                  px={2}
+                  minW="auto"
+                >
+                  コピー
+                </Button>
+              </Flex>
+            ) : (
+              <Button
+                onClick={handleSaveHistory}
+                isLoading={isSavingHistory}
+                loadingText="保存中"
+                size="sm"
+                colorScheme="gray"
+                flexShrink={0}
+                flexGrow={1}
+              >
+                履歴を保存
+              </Button>
+            )
+          )}
+
           {lastAssistantMessageContent != null && !isLoading && (
             <Button
               onClick={handleApplyState}
               size="sm"
-              width="full"
               colorScheme="green"
               bg="green.500"
               color="white"
               _hover={{ bg: 'green.600' }}
+              flexShrink={0}
+              flexGrow={1}
             >
-              最後のメッセージのデータを適用
+              データを適用
             </Button>
           )}
+
           {isLoading && (
-            <Button 
-              onClick={stop} 
-              size="sm" 
+            <Button
+              onClick={stop}
+              size="sm"
               width="full"
-              variant="outline" 
+              variant="outline"
               colorScheme="red"
             >
               停止
             </Button>
           )}
-        </Flex>
+        </HStack>
 
         <form onSubmit={handleFormSubmit}>
           <Flex align="flex-end">

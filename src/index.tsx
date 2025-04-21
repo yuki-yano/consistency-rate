@@ -82,27 +82,29 @@ app.get("/short_url/:key{[0-9a-z]{8}}", async (c) => {
   }
 })
 
-const schema = z.object({
+const shortenUrlSchema = z.object({
   url: z.string().url(),
 })
-const validator = zValidator("form", schema)
+const shortenUrlValidator = zValidator("form", shortenUrlSchema)
 
-const createKey = async (kv: KVNamespace, url: string) => {
+const createKey = async (kv: KVNamespace, value: string, prefix = "") => {
   const uuid = uuidv4()
   const key = uuid.substring(0, 8)
-  const result = await kv.get(key)
+  const prefixedKey = prefix + key
+  const result = await kv.get(prefixedKey)
 
   if (result == null) {
-    await kv.put(key, url)
+    await kv.put(prefixedKey, value)
+    return key; // Return the key without prefix
   } else {
-    return await createKey(kv, url)
+    // Retry if key collision happens
+    return await createKey(kv, value, prefix);
   }
-  return key
 }
 
-app.post("/api/shorten_url/create", csrf(), validator, async (c) => {
+app.post("/api/shorten_url/create", csrf(), shortenUrlValidator, async (c) => {
   const { url } = c.req.valid("form")
-  const key = await createKey(c.env.KV, url)
+  const key = await createKey(c.env.KV, url) // No prefix for short URLs
   const shortenUrl = new URL(`/short_url/${key}`, c.req.url)
 
   try {
@@ -118,6 +120,87 @@ app.post("/api/shorten_url/create", csrf(), validator, async (c) => {
 
   return c.json({ shortenUrl: shortenUrl.toString() })
 })
+
+const chatMessageSchema = z.object({
+  role: z.enum(["user", "assistant", "system"]),
+  content: z.string(),
+});
+
+const chatHistorySchema = z.object({
+  messages: z.array(chatMessageSchema),
+});
+const chatHistoryValidator = zValidator("json", chatHistorySchema);
+
+const CHAT_HISTORY_PREFIX = "chat_history_";
+
+const createChatHistoryKey = async (
+  kv: KVNamespace,
+  messages: CoreMessage[],
+) => {
+  // Use the generic createKey function with a prefix
+  return await createKey(kv, JSON.stringify(messages), CHAT_HISTORY_PREFIX);
+};
+
+app.post("/api/chat/history", chatHistoryValidator, async (c) => {
+  const { messages } = c.req.valid("json");
+
+  if (messages == null || messages.length === 0) {
+    return c.json({ error: "Messages cannot be empty" }, 400);
+  }
+
+  try {
+    const key = await createChatHistoryKey(c.env.KV, messages);
+    return c.json({ key: key });
+  } catch (error) {
+    console.error("Failed to save chat history:", error);
+    return c.json({ error: "Failed to save chat history" }, 500);
+  }
+});
+
+app.get("/api/chat/history/:key{[0-9a-z]{8}}", async (c) => {
+  const key = c.req.param("key");
+  const prefixedKey = CHAT_HISTORY_PREFIX + key;
+
+  try {
+    const storedHistory = await c.env.KV.get(prefixedKey);
+
+    if (storedHistory === null) {
+      return c.json({ error: "Chat history not found" }, 404);
+    }
+
+    // Attempt to parse the stored JSON string
+    try {
+      const messages: CoreMessage[] = JSON.parse(storedHistory);
+      // Validate the structure roughly (more robust validation could be added)
+      if (
+        Array.isArray(messages) &&
+        messages.every(
+          (msg) =>
+            msg !== null &&
+            'role' in msg &&
+            'content' in msg
+        )
+      ) {
+        return c.json({ messages });
+      } else {
+        console.error("Invalid chat history format found in KV for key:", prefixedKey);
+        return c.json({ error: "Invalid chat history format found" }, 500);
+      }
+    } catch (parseError) {
+      console.error(
+        "Failed to parse chat history from KV for key:",
+        prefixedKey,
+        parseError,
+      );
+      // Optionally delete the invalid entry
+      // await c.env.KV.delete(prefixedKey);
+      return c.json({ error: "Failed to parse chat history" }, 500);
+    }
+  } catch (error) {
+    console.error("Failed to retrieve chat history:", error);
+    return c.json({ error: "Failed to retrieve chat history" }, 500);
+  }
+});
 
 app.post("/api/chat", async (c) => {
   try {
