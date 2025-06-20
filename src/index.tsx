@@ -71,13 +71,17 @@ app.get("/short_url/:key{[0-9a-z]{8}}", async (c) => {
 
     const redirectUrl = new URL(storedUrlString)
 
-    if (modeParam !== null) {
+    if (modeParam != null) {
       redirectUrl.searchParams.set("mode", modeParam)
     }
 
     return c.redirect(redirectUrl.toString())
   } catch (e) {
-    console.error(`Error in /short_url/:key{[0-9a-z]{8}} (${c.req.path}): Invalid URL stored in KV:`, storedUrlString, e)
+    console.error(
+      `Error in /short_url/:key{[0-9a-z]{8}} (${c.req.path}): Invalid URL stored in KV:`,
+      storedUrlString,
+      e,
+    )
     return c.redirect("/")
   }
 })
@@ -95,10 +99,10 @@ const createKey = async (kv: KVNamespace, value: string, prefix = "") => {
 
   if (result == null) {
     await kv.put(prefixedKey, value)
-    return key; // Return the key without prefix
+    return key // Return the key without prefix
   } else {
     // Retry if key collision happens
-    return await createKey(kv, value, prefix);
+    return await createKey(kv, value, prefix)
   }
 }
 
@@ -108,14 +112,14 @@ app.post("/api/shorten_url/create", csrf(), shortenUrlValidator, async (c) => {
   const shortenUrl = new URL(`/short_url/${key}`, c.req.url)
 
   try {
-    const originalUrl = new URL(url);
-    const modeParam = originalUrl.searchParams.get("mode");
+    const originalUrl = new URL(url)
+    const modeParam = originalUrl.searchParams.get("mode")
 
     if (modeParam !== null) {
-      shortenUrl.searchParams.set("mode", modeParam);
+      shortenUrl.searchParams.set("mode", modeParam)
     }
   } catch (e) {
-    console.error(`Error in /api/shorten_url/create (${c.req.path}): Invalid original URL format:`, url, e);
+    console.error(`Error in /api/shorten_url/create (${c.req.path}): Invalid original URL format:`, url, e)
   }
 
   return c.json({ shortenUrl: shortenUrl.toString() })
@@ -124,83 +128,75 @@ app.post("/api/shorten_url/create", csrf(), shortenUrlValidator, async (c) => {
 const chatMessageSchema = z.object({
   content: z.string(),
   role: z.enum(["user", "assistant", "system"]),
-});
+})
 
 const chatHistorySchema = z.object({
   messages: z.array(chatMessageSchema),
-});
-const chatHistoryValidator = zValidator("json", chatHistorySchema);
+})
+const chatHistoryValidator = zValidator("json", chatHistorySchema)
 
-const CHAT_HISTORY_PREFIX = "chat_history_";
+const CHAT_HISTORY_PREFIX = "chat_history_"
 
-const createChatHistoryKey = async (
-  kv: KVNamespace,
-  messages: CoreMessage[],
-) => {
+const createChatHistoryKey = async (kv: KVNamespace, messages: CoreMessage[]) => {
   // Use the generic createKey function with a prefix
-  return await createKey(kv, JSON.stringify(messages), CHAT_HISTORY_PREFIX);
-};
+  return await createKey(kv, JSON.stringify(messages), CHAT_HISTORY_PREFIX)
+}
 
 app.post("/api/chat/history", chatHistoryValidator, async (c) => {
-  const { messages } = c.req.valid("json");
+  const { messages } = c.req.valid("json")
 
   if (messages == null || messages.length === 0) {
-    return c.json({ error: "Messages cannot be empty" }, 400);
+    return c.json({ error: "Messages cannot be empty" }, 400)
   }
 
   try {
-    const key = await createChatHistoryKey(c.env.KV, messages);
-    return c.json({ key: key });
+    const key = await createChatHistoryKey(c.env.KV, messages)
+    return c.json({ key: key })
   } catch (error) {
-    console.error(`Error in /api/chat/history (${c.req.path}): Failed to save chat history:`, error);
-    return c.json({ error: "Failed to save chat history" }, 500);
+    console.error(`Error in /api/chat/history (${c.req.path}): Failed to save chat history:`, error)
+    return c.json({ error: "Failed to save chat history" }, 500)
   }
-});
+})
 
 app.get("/api/chat/history/:key{[0-9a-z]{8}}", async (c) => {
-  const key = c.req.param("key");
-  const prefixedKey = CHAT_HISTORY_PREFIX + key;
+  const key = c.req.param("key")
+  const prefixedKey = CHAT_HISTORY_PREFIX + key
 
   try {
-    const storedHistory = await c.env.KV.get(prefixedKey);
+    const storedHistory = await c.env.KV.get(prefixedKey)
 
     if (storedHistory === null) {
-      return c.json({ error: "Chat history not found" }, 404);
+      return c.json({ error: "Chat history not found" }, 404)
     }
 
     // Attempt to parse the stored JSON string
     try {
-      const messages: CoreMessage[] = JSON.parse(storedHistory);
+      const messages: CoreMessage[] = JSON.parse(storedHistory)
       // Validate the structure roughly (more robust validation could be added)
-      if (
-        Array.isArray(messages) &&
-        messages.every(
-          (msg) =>
-            msg !== null &&
-            'role' in msg &&
-            'content' in msg
-        )
-      ) {
-        return c.json({ messages });
+      if (Array.isArray(messages) && messages.every((msg) => msg !== null && "role" in msg && "content" in msg)) {
+        return c.json({ messages })
       } else {
-        console.error("Invalid chat history format found in KV for key:", prefixedKey);
-        return c.json({ error: "Invalid chat history format found" }, 500);
+        console.error("Invalid chat history format found in KV for key:", prefixedKey)
+        return c.json({ error: "Invalid chat history format found" }, 500)
       }
     } catch (parseError) {
       console.error(
         `Error in /api/chat/history/:key{[0-9a-z]{8}} (${c.req.path}): Failed to parse chat history from KV for key:`,
         prefixedKey,
         parseError,
-      );
+      )
       // Optionally delete the invalid entry
       // await c.env.KV.delete(prefixedKey);
-      return c.json({ error: "Failed to parse chat history" }, 500);
+      return c.json({ error: "Failed to parse chat history" }, 500)
     }
   } catch (error) {
-    console.error(`Error in /api/chat/history/:key{[0-9a-z]{8}} (${c.req.path}): Failed to retrieve chat history:`, error);
-    return c.json({ error: "Failed to retrieve chat history" }, 500);
+    console.error(
+      `Error in /api/chat/history/:key{[0-9a-z]{8}} (${c.req.path}): Failed to retrieve chat history:`,
+      error,
+    )
+    return c.json({ error: "Failed to retrieve chat history" }, 500)
   }
-});
+})
 
 app.post("/api/chat", async (c) => {
   try {
@@ -216,18 +212,29 @@ app.post("/api/chat", async (c) => {
       OPENAI_MODEL,
     } = env(c)
 
-    const { messages, provider, systemPrompt, thinkingBudget }: {
-      messages: CoreMessage[];
-      provider: "google" | "openai" | "xai";
-      systemPrompt?: string;
-      thinkingBudget?: number;
+    const {
+      messages,
+      provider,
+      systemPrompt,
+      thinkingBudget,
+    }: {
+      messages: CoreMessage[]
+      provider: "google" | "openai" | "xai"
+      systemPrompt?: string
+      thinkingBudget?: number
     } = await c.req.json()
 
     if (!provider) {
-      return new Response(JSON.stringify({ error: "AI_PROVIDER environment variable is not set or invalid. Please set it to 'google', 'openai', or 'xai'." }), {
-        headers: { "Content-Type": "application/json" },
-        status: 500,
-      })
+      return new Response(
+        JSON.stringify({
+          error:
+            "AI_PROVIDER environment variable is not set or invalid. Please set it to 'google', 'openai', or 'xai'.",
+        }),
+        {
+          headers: { "Content-Type": "application/json" },
+          status: 500,
+        },
+      )
     }
 
     let baseURL: string | undefined
@@ -243,7 +250,8 @@ app.post("/api/chat", async (c) => {
       modelNameFromEnv = GEMINI_MODEL
       clientFactory = createGoogleGenerativeAI
       defaultModel = "gemini-2.5-flash-preview-04-17"
-      const validThinkingBudget = typeof thinkingBudget === 'number' && [0, 1024, 8192].includes(thinkingBudget) ? thinkingBudget : 0;
+      const validThinkingBudget =
+        typeof thinkingBudget === "number" && [0, 1024, 8192].includes(thinkingBudget) ? thinkingBudget : 0
       providerOptions = {
         google: {
           thinkingConfig: {
@@ -252,12 +260,22 @@ app.post("/api/chat", async (c) => {
         },
       }
       if (baseURL == null) {
-        console.error(`Error in /api/chat (${c.req.path}): GOOGLE_AI_GATEWAY_URL is not set, but provider in request is 'google'.`);
-        return new Response(JSON.stringify({ error: "GOOGLE_AI_GATEWAY_URL is not set, but provider in request is 'google'." }), { status: 500 })
+        console.error(
+          `Error in /api/chat (${c.req.path}): GOOGLE_AI_GATEWAY_URL is not set, but provider in request is 'google'.`,
+        )
+        return new Response(
+          JSON.stringify({ error: "GOOGLE_AI_GATEWAY_URL is not set, but provider in request is 'google'." }),
+          { status: 500 },
+        )
       }
       if (!apiKey) {
-        console.error(`Error in /api/chat (${c.req.path}): GEMINI_API_KEY is not set, but provider in request is 'google'.`);
-        return new Response(JSON.stringify({ error: "GEMINI_API_KEY is not set, but provider in request is 'google'." }), { status: 500 })
+        console.error(
+          `Error in /api/chat (${c.req.path}): GEMINI_API_KEY is not set, but provider in request is 'google'.`,
+        )
+        return new Response(
+          JSON.stringify({ error: "GEMINI_API_KEY is not set, but provider in request is 'google'." }),
+          { status: 500 },
+        )
       }
     } else if (provider === "openai") {
       baseURL = OPENAI_AI_GATEWAY_URL
@@ -271,12 +289,22 @@ app.post("/api/chat", async (c) => {
         },
       }
       if (baseURL == null) {
-        console.error(`Error in /api/chat (${c.req.path}): OPENAI_AI_GATEWAY_URL is not set, but provider in request is 'openai'.`);
-        return new Response(JSON.stringify({ error: "OPENAI_AI_GATEWAY_URL is not set, but provider in request is 'openai'." }), { status: 500 })
+        console.error(
+          `Error in /api/chat (${c.req.path}): OPENAI_AI_GATEWAY_URL is not set, but provider in request is 'openai'.`,
+        )
+        return new Response(
+          JSON.stringify({ error: "OPENAI_AI_GATEWAY_URL is not set, but provider in request is 'openai'." }),
+          { status: 500 },
+        )
       }
       if (!apiKey) {
-        console.error(`Error in /api/chat (${c.req.path}): OPENAI_API_KEY is not set, but provider in request is 'openai'.`);
-        return new Response(JSON.stringify({ error: "OPENAI_API_KEY is not set, but provider in request is 'openai'." }), { status: 500 })
+        console.error(
+          `Error in /api/chat (${c.req.path}): OPENAI_API_KEY is not set, but provider in request is 'openai'.`,
+        )
+        return new Response(
+          JSON.stringify({ error: "OPENAI_API_KEY is not set, but provider in request is 'openai'." }),
+          { status: 500 },
+        )
       }
     } else if (provider === "xai") {
       apiKey = GROK_API_KEY
@@ -288,8 +316,10 @@ app.post("/api/chat", async (c) => {
 
       // Check if the Grok gateway URL is set
       if (baseURL == null || baseURL.trim() === "") {
-        console.error(`Error in /api/chat (${c.req.path}): GROK_AI_GATEWAY_URL must be set when using xai provider.`);
-        return new Response(JSON.stringify({ error: "GROK_AI_GATEWAY_URL must be set when using xai provider." }), { status: 500 });
+        console.error(`Error in /api/chat (${c.req.path}): GROK_AI_GATEWAY_URL must be set when using xai provider.`)
+        return new Response(JSON.stringify({ error: "GROK_AI_GATEWAY_URL must be set when using xai provider." }), {
+          status: 500,
+        })
       }
 
       providerOptions = {
@@ -298,24 +328,27 @@ app.post("/api/chat", async (c) => {
         },
       }
       if (apiKey == null || apiKey === "") {
-        console.error(`Error in /api/chat (${c.req.path}): GROK_API_KEY is not set, but provider in request is 'xai'.`);
-        return new Response(JSON.stringify({ error: "GROK_API_KEY is not set, but provider in request is 'xai'." }), { status: 500 })
+        console.error(`Error in /api/chat (${c.req.path}): GROK_API_KEY is not set, but provider in request is 'xai'.`)
+        return new Response(JSON.stringify({ error: "GROK_API_KEY is not set, but provider in request is 'xai'." }), {
+          status: 500,
+        })
       }
     } else {
-      return new Response(JSON.stringify({ error: "Invalid AI_PROVIDER value."}), { status: 500 })
+      return new Response(JSON.stringify({ error: "Invalid AI_PROVIDER value." }), { status: 500 })
     }
 
     // BaseURL check - already handles null/empty baseURL from provider logic
     if (baseURL == null || baseURL === "") {
       console.error(`Error in /api/chat (${c.req.path}): Base URL is missing unexpectedly.`)
-      return new Response(JSON.stringify({ error: "Internal configuration error: Missing Base URL."}), { status: 500 })
+      return new Response(JSON.stringify({ error: "Internal configuration error: Missing Base URL." }), { status: 500 })
     }
     if (apiKey == null || apiKey === "") {
       console.error(`Error in /api/chat (${c.req.path}): API Key is missing unexpectedly.`)
-      return new Response(JSON.stringify({ error: "Internal configuration error: Missing API Key."}), { status: 500 })
+      return new Response(JSON.stringify({ error: "Internal configuration error: Missing API Key." }), { status: 500 })
     }
 
-    const modelName = typeof modelNameFromEnv === "string" && modelNameFromEnv.trim() !== "" ? modelNameFromEnv : defaultModel
+    const modelName =
+      typeof modelNameFromEnv === "string" && modelNameFromEnv.trim() !== "" ? modelNameFromEnv : defaultModel
 
     const client = clientFactory({
       apiKey: apiKey,
@@ -333,11 +366,11 @@ app.post("/api/chat", async (c) => {
           }))
       : []
 
-    if (typeof systemPrompt === 'string' && systemPrompt.trim() !== '') {
-      processedMessages.unshift({ content: systemPrompt, role: 'system' });
+    if (typeof systemPrompt === "string" && systemPrompt.trim() !== "") {
+      processedMessages.unshift({ content: systemPrompt, role: "system" })
     }
 
-    if (processedMessages.length === 0 || (processedMessages.length === 1 && processedMessages[0].role === 'system')) {
+    if (processedMessages.length === 0 || (processedMessages.length === 1 && processedMessages[0].role === "system")) {
       console.error(`Error in /api/chat (${c.req.path}): Invalid or empty messages array after processing.`)
       return new Response(JSON.stringify({ error: "Invalid or empty messages format" }), {
         headers: { "Content-Type": "application/json" },
@@ -361,8 +394,8 @@ app.post("/api/chat", async (c) => {
 
     if (error instanceof Error) {
       errorMessage = `Backend Error: ${error.message}`
-    } else if (typeof error === 'object' && error !== null && 'message' in error) {
-      errorMessage = `Backend Error: ${error.message}`;
+    } else if (typeof error === "object" && error !== null && "message" in error) {
+      errorMessage = `Backend Error: ${error.message}`
     } else {
       errorMessage = `Backend Error: An unexpected error type occurred.`
     }

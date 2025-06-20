@@ -222,100 +222,92 @@ const checkPotsAndPatterns = (
   activePatterns: ReadonlyArray<Pattern>,
   pot: PotState,
 ): CheckResult => {
-  const prosperityUid = "prosperity_card" // 繁栄のカードの UID
-  const desiresUid = "desires_card" // 欲望のカードの UID
-  const handHasProsperity = (hand[prosperityUid] || 0) > 0 // 手札に繁栄のカードがあるか
-  const handHasDesires = (hand[desiresUid] || 0) > 0 // 手札に欲望のカードがあるか
-  const prosperityCost = pot.prosperity.cost // 繁栄のカードのコスト
+  const prosperityUid = "prosperity_card"
+  const desiresUid = "desires_card"
+  const handHasProsperity = (hand[prosperityUid] || 0) > 0
+  const handHasDesires = (hand[desiresUid] || 0) > 0
+  const prosperityCost = pot.prosperity.cost
 
-  const finalPatternUidsSet = new Set<string>() // 最終的に満たされたパターンの UID を格納する Set
-  const finalLabelsSet = new Set<string>() // 最終的に満たされたラベルの UID を格納する Set
+  const finalPatternUidsSet = new Set<string>()
+  const finalLabelsSet = new Set<string>()
 
-  // シナリオ 1: 繁栄のカードが引かれた場合
   if (handHasProsperity && pot.prosperity.count > 0) {
-    const remainingDeckSize = Object.values(remainingDeck).reduce((s, c) => s + c, 0) // 残りのデッキサイズ
-    const initialHandWithoutProsperity = { ...hand } // 繁栄のカードを除いた初期手札
+    const remainingDeckSize = Object.values(remainingDeck).reduce((s, c) => s + c, 0)
+    const initialHandWithoutProsperity = { ...hand }
     initialHandWithoutProsperity[prosperityUid] = (initialHandWithoutProsperity[prosperityUid] || 0) - 1
 
     const { allSatisfiedLabels: initialLabels, satisfiedPatternUids: initialPatternUids } =
-      findSatisfiedPatternsAndLabels(initialHandWithoutProsperity, remainingDeck, activePatterns) // 繁栄のカードを除いた手札でパターンとラベルを検索
-    initialPatternUids.forEach((uid) => finalPatternUidsSet.add(uid)) // 初期結果を最終セットに追加
-    initialLabels.forEach((uid) => finalLabelsSet.add(uid)) // 初期結果を最終セットに追加
+      findSatisfiedPatternsAndLabels(initialHandWithoutProsperity, remainingDeck, activePatterns)
+    initialPatternUids.forEach((uid) => finalPatternUidsSet.add(uid))
+    initialLabels.forEach((uid) => finalLabelsSet.add(uid))
 
     if (remainingDeckSize >= prosperityCost) {
       // 残りのデッキサイズがコスト以上の場合
-      const deckUids = Object.keys(remainingDeck) // デッキにあるカードの UID
+      const deckUids = Object.keys(remainingDeck)
       for (const uidToAdd of deckUids) {
-        // デッキから1枚引く各シナリオをシミュレーション
         if ((remainingDeck[uidToAdd] || 0) > 0) {
-          // そのカードがデッキに存在する場合
-          const effectiveHand = { ...initialHandWithoutProsperity } // 引いたカードを追加した有効な手札
+          const effectiveHand = { ...initialHandWithoutProsperity }
           effectiveHand[uidToAdd] = (effectiveHand[uidToAdd] || 0) + 1
           const { allSatisfiedLabels: labels, satisfiedPatternUids: uids } = findSatisfiedPatternsAndLabels(
             effectiveHand,
             remainingDeck,
             activePatterns,
-          ) // 有効な手札でパターンとラベルを検索
-          uids.forEach((uid) => finalPatternUidsSet.add(uid)) // 結果を最終セットに追加
-          labels.forEach((labelUid) => finalLabelsSet.add(labelUid)) // 結果を最終セットに追加
+          )
+          uids.forEach((uid) => finalPatternUidsSet.add(uid))
+          labels.forEach((labelUid) => finalLabelsSet.add(labelUid))
         }
       }
     }
   } else if (handHasDesires && pot.desiresOrExtravagance.count > 0) {
-    // シナリオ 2: 欲望のカードが引かれた場合
     const { allSatisfiedLabels: initialLabels, satisfiedPatternUids: initialPatternUids } =
-      findSatisfiedPatternsAndLabels(hand, remainingDeck, activePatterns) // 初期手札でパターンとラベルを検索
-    initialPatternUids.forEach((uid) => finalPatternUidsSet.add(uid)) // 初期結果を最終セットに追加
-    initialLabels.forEach((uid) => finalLabelsSet.add(uid)) // 初期結果を最終セットに追加
+      findSatisfiedPatternsAndLabels(hand, remainingDeck, activePatterns)
+    initialPatternUids.forEach((uid) => finalPatternUidsSet.add(uid))
+    initialLabels.forEach((uid) => finalLabelsSet.add(uid))
 
     const availableUids = Object.keys(remainingDeck).filter((uid) => (remainingDeck[uid] || 0) > 0) // デッキに残っているカードの UID
 
     for (let i = 0; i < availableUids.length; i++) {
-      // デッキから異なる2枚を引くシナリオをシミュレーション
       for (let j = i + 1; j < availableUids.length; j++) {
         const uid1 = availableUids[i]
         const uid2 = availableUids[j]
-        const effectiveHand = { ...hand } // 引いたカードを追加した有効な手札
+        const effectiveHand = { ...hand }
         effectiveHand[uid1] = (effectiveHand[uid1] || 0) + 1
         effectiveHand[uid2] = (effectiveHand[uid2] || 0) + 1
         const { allSatisfiedLabels: labels, satisfiedPatternUids: uids } = findSatisfiedPatternsAndLabels(
           effectiveHand,
           remainingDeck,
           activePatterns,
-        ) // 有効な手札でパターンとラベルを検索
-        uids.forEach((uid) => finalPatternUidsSet.add(uid)) // 結果を最終セットに追加
-        labels.forEach((labelUid) => finalLabelsSet.add(labelUid)) // 結果を最終セットに追加
+        )
+        uids.forEach((uid) => finalPatternUidsSet.add(uid))
+        labels.forEach((labelUid) => finalLabelsSet.add(labelUid))
       }
     }
     for (const uid of availableUids) {
-      // デッキから同じカード2枚を引くシナリオをシミュレーション
       if ((remainingDeck[uid] || 0) >= 2) {
-        // そのカードがデッキに2枚以上存在する場合
-        const effectiveHand = { ...hand } // 引いたカードを追加した有効な手札
+        const effectiveHand = { ...hand }
         effectiveHand[uid] = (effectiveHand[uid] || 0) + 2
         const { allSatisfiedLabels: labels, satisfiedPatternUids: uids } = findSatisfiedPatternsAndLabels(
           effectiveHand,
           remainingDeck,
           activePatterns,
-        ) // 有効な手札でパターンとラベルを検索
-        uids.forEach((uid) => finalPatternUidsSet.add(uid)) // 結果を最終セットに追加
-        labels.forEach((labelUid) => finalLabelsSet.add(labelUid)) // 結果を最終セットに追加
+        )
+        uids.forEach((uid) => finalPatternUidsSet.add(uid))
+        labels.forEach((labelUid) => finalLabelsSet.add(labelUid))
       }
     }
   } else {
-    // シナリオ 3: ポットカードが手札にない場合
     const { allSatisfiedLabels: labels, satisfiedPatternUids: uids } = findSatisfiedPatternsAndLabels(
       hand,
       remainingDeck,
       activePatterns,
-    ) // 初期手札でパターンとラベルを検索
-    uids.forEach((uid) => finalPatternUidsSet.add(uid)) // 結果を最終セットに追加
-    labels.forEach((labelUid) => finalLabelsSet.add(labelUid)) // 結果を最終セットに追加
+    )
+    uids.forEach((uid) => finalPatternUidsSet.add(uid))
+    labels.forEach((labelUid) => finalLabelsSet.add(labelUid))
   }
 
-  const finalPatternUidsArray = Array.from(finalPatternUidsSet).filter((uid) => uid && uid.length > 0) // 最終的なパターンの UID 配列
-  const finalLabelsArray = Array.from(finalLabelsSet).filter((uid) => uid && uid.length > 0) // 最終的なラベルの UID 配列
-  const isSuccess = finalPatternUidsArray.length > 0 || finalLabelsArray.length > 0 // 成功したかどうか (いずれかのパターンまたはラベルが満たされたか)
+  const finalPatternUidsArray = Array.from(finalPatternUidsSet).filter((uid) => uid && uid.length > 0)
+  const finalLabelsArray = Array.from(finalLabelsSet).filter((uid) => uid && uid.length > 0)
+  const isSuccess = finalPatternUidsArray.length > 0 || finalLabelsArray.length > 0
 
   return {
     isSuccess: isSuccess,
@@ -331,10 +323,9 @@ type RecursiveCalcResult = {
   totalCombinations: bigint
 }
 
-let memo: Record<string, RecursiveCalcResult> = {} // メモ化のためのオブジェクト
+let memo: Record<string, RecursiveCalcResult> = {}
 const createMemoKey = (index: number, slots: number, comp: Composition): string => {
-  // メモ化キーを生成
-  const sortedEntries = Object.entries(comp).sort(([keyA], [keyB]) => keyA.localeCompare(keyB)) // 構成をソートして文字列化
+  const sortedEntries = Object.entries(comp).sort(([a], [b]) => a.localeCompare(b))
   return `${index}|${slots}|${JSON.stringify(sortedEntries)}`
 }
 
