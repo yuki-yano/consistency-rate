@@ -67,6 +67,13 @@ export type CalculationResultState = {
   patternSuccessRates: { [patternId: string]: string }
 }
 
+export type CalculationMode = "exact" | "simulation"
+
+export type CalculationSettings = {
+  mode: CalculationMode
+  simulationTrials: number
+}
+
 export type PotState = {
   desiresOrExtravagance: {
     count: number
@@ -108,6 +115,11 @@ const defaultPotState: PotState = {
     count: 0,
     priority: 1,
   },
+}
+
+const defaultCalculationSettings: CalculationSettings = {
+  mode: "exact",
+  simulationTrials: 10000,
 }
 
 // urlSerializeOptions を生成する関数に変更
@@ -175,6 +187,8 @@ export const labelAtom = atomWithHash<LabelState>(
 )
 
 export const potAtom = atomWithHash<PotState>("pot", defaultPotState, createUrlSerializeOptions(defaultPotState, "pot"))
+
+export const calculationSettingsAtom = atomWithStorage<CalculationSettings>("calculationSettings", defaultCalculationSettings)
 
 export const calculationResultAtom = atom<CalculationResultState | null>(null)
 
