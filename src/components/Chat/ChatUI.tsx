@@ -342,20 +342,18 @@ const ChatUIInternal: FC = () => {
                 value={aiProvider}
               >
                 <option value="google">Google</option>
-                <option value="openai">OpenAI</option>
-                <option value="xai">Grok (xAI)</option>
               </Select>
             </FormControl>
 
             <FormControl
               flex="1"
-              isDisabled={aiProvider !== 'google' || isLoading}
+              isDisabled={isLoading}
               mr={3}
             >
               <FormLabel fontSize="xs" htmlFor="thinking-budget" mb={0} mr={2} whiteSpace="nowrap">Thinking Budget:</FormLabel>
               <Select
                 borderRadius="md"
-                disabled={aiProvider !== 'google' || isLoading}
+                disabled={isLoading}
                 focusBorderColor="blue.500"
                 id="thinking-budget"
                 onChange={handleThinkingBudgetChange}
