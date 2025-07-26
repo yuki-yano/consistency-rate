@@ -1,10 +1,10 @@
 import { useChat } from "@ai-sdk/react"
 import { useToast } from "@chakra-ui/react"
-import { useAtom, useAtomValue } from "jotai"
+import { useAtom } from "jotai"
 import { FC, useState } from "react"
 
 import { ChatContext } from "../contexts/ChatContext"
-import { aiProviderAtom, chatMessagesAtom, systemPromptAtom } from "../state"
+import { chatMessagesAtom, systemPromptAtom } from "../state"
 
 type ChatProviderProps = {
   children: React.ReactNode
@@ -12,7 +12,6 @@ type ChatProviderProps = {
 
 export const ChatProvider: FC<ChatProviderProps> = ({ children }) => {
   const [persistedMessages] = useAtom(chatMessagesAtom)
-  const selectedProvider = useAtomValue(aiProviderAtom)
   const toast = useToast()
   const [thinkingBudget, setThinkingBudget] = useState<number>(0)
   const [systemPrompt] = useAtom(systemPromptAtom)
@@ -20,9 +19,8 @@ export const ChatProvider: FC<ChatProviderProps> = ({ children }) => {
   const chatHelpers = useChat({
     api: "/api/chat",
     body: {
-      provider: selectedProvider,
       systemPrompt: systemPrompt,
-      thinkingBudget: selectedProvider === "google" ? thinkingBudget : undefined,
+      thinkingBudget: thinkingBudget,
     },
     initialMessages: persistedMessages,
     onError: (err) => {

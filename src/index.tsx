@@ -1,8 +1,6 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
-import { createOpenAI } from "@ai-sdk/openai"
-import { createXai } from "@ai-sdk/xai"
 import { zValidator } from "@hono/zod-validator"
-import { CoreMessage, JSONValue, LanguageModel, streamText } from "ai"
+import { CoreMessage, LanguageModel, streamText } from "ai"
 import { Hono } from "hono"
 import { env } from "hono/adapter"
 import { csrf } from "hono/csrf"
@@ -14,13 +12,7 @@ type Bindings = {
   GEMINI_API_KEY: string
   GEMINI_MODEL?: string
   GOOGLE_AI_GATEWAY_URL?: string
-  GROK_AI_GATEWAY_URL?: string
-  GROK_API_KEY: string
-  GROK_MODEL?: string
   KV: KVNamespace
-  OPENAI_AI_GATEWAY_URL?: string
-  OPENAI_API_KEY: string
-  OPENAI_MODEL?: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -204,153 +196,56 @@ app.post("/api/chat", async (c) => {
       GEMINI_API_KEY,
       GEMINI_MODEL,
       GOOGLE_AI_GATEWAY_URL,
-      GROK_AI_GATEWAY_URL,
-      GROK_API_KEY,
-      GROK_MODEL,
-      OPENAI_AI_GATEWAY_URL,
-      OPENAI_API_KEY,
-      OPENAI_MODEL,
     } = env(c)
 
     const {
       messages,
-      provider,
       systemPrompt,
       thinkingBudget,
     }: {
       messages: CoreMessage[]
-      provider: "google" | "openai" | "xai"
       systemPrompt?: string
       thinkingBudget?: number
     } = await c.req.json()
 
-    if (!provider) {
-      return new Response(
-        JSON.stringify({
-          error:
-            "AI_PROVIDER environment variable is not set or invalid. Please set it to 'google', 'openai', or 'xai'.",
-        }),
-        {
-          headers: { "Content-Type": "application/json" },
-          status: 500,
+    const baseURL = GOOGLE_AI_GATEWAY_URL
+    const apiKey = GEMINI_API_KEY
+    const modelNameFromEnv = GEMINI_MODEL
+    const defaultModel = "gemini-2.5-flash-lite"
+    
+    const validThinkingBudget =
+      typeof thinkingBudget === "number" && [0, 1024, 8192].includes(thinkingBudget) ? thinkingBudget : 0
+    const providerOptions = {
+      google: {
+        thinkingConfig: {
+          thinkingBudget: validThinkingBudget,
         },
+      },
+    }
+    
+    if (baseURL == null) {
+      console.error(
+        `Error in /api/chat (${c.req.path}): GOOGLE_AI_GATEWAY_URL is not set.`,
+      )
+      return new Response(
+        JSON.stringify({ error: "GOOGLE_AI_GATEWAY_URL is not set." }),
+        { status: 500 },
       )
     }
-
-    let baseURL: string | undefined
-    let apiKey: string | undefined
-    let modelNameFromEnv: string | undefined
-    let clientFactory: typeof createGoogleGenerativeAI | typeof createOpenAI | typeof createXai
-    let defaultModel: string
-    let providerOptions: Record<string, Record<string, JSONValue>> = {}
-
-    if (provider === "google") {
-      baseURL = GOOGLE_AI_GATEWAY_URL
-      apiKey = GEMINI_API_KEY
-      modelNameFromEnv = GEMINI_MODEL
-      clientFactory = createGoogleGenerativeAI
-      defaultModel = "gemini-2.5-flash-preview-04-17"
-      const validThinkingBudget =
-        typeof thinkingBudget === "number" && [0, 1024, 8192].includes(thinkingBudget) ? thinkingBudget : 0
-      providerOptions = {
-        google: {
-          thinkingConfig: {
-            thinkingBudget: validThinkingBudget,
-          },
-        },
-      }
-      if (baseURL == null) {
-        console.error(
-          `Error in /api/chat (${c.req.path}): GOOGLE_AI_GATEWAY_URL is not set, but provider in request is 'google'.`,
-        )
-        return new Response(
-          JSON.stringify({ error: "GOOGLE_AI_GATEWAY_URL is not set, but provider in request is 'google'." }),
-          { status: 500 },
-        )
-      }
-      if (!apiKey) {
-        console.error(
-          `Error in /api/chat (${c.req.path}): GEMINI_API_KEY is not set, but provider in request is 'google'.`,
-        )
-        return new Response(
-          JSON.stringify({ error: "GEMINI_API_KEY is not set, but provider in request is 'google'." }),
-          { status: 500 },
-        )
-      }
-    } else if (provider === "openai") {
-      baseURL = OPENAI_AI_GATEWAY_URL
-      apiKey = OPENAI_API_KEY
-      modelNameFromEnv = OPENAI_MODEL
-      clientFactory = createOpenAI
-      defaultModel = "gpt-4.1-mini-2025-04-14"
-      providerOptions = {
-        openai: {
-          // Add OpenAI specific options if needed
-        },
-      }
-      if (baseURL == null) {
-        console.error(
-          `Error in /api/chat (${c.req.path}): OPENAI_AI_GATEWAY_URL is not set, but provider in request is 'openai'.`,
-        )
-        return new Response(
-          JSON.stringify({ error: "OPENAI_AI_GATEWAY_URL is not set, but provider in request is 'openai'." }),
-          { status: 500 },
-        )
-      }
-      if (!apiKey) {
-        console.error(
-          `Error in /api/chat (${c.req.path}): OPENAI_API_KEY is not set, but provider in request is 'openai'.`,
-        )
-        return new Response(
-          JSON.stringify({ error: "OPENAI_API_KEY is not set, but provider in request is 'openai'." }),
-          { status: 500 },
-        )
-      }
-    } else if (provider === "xai") {
-      apiKey = GROK_API_KEY
-      modelNameFromEnv = GROK_MODEL
-      clientFactory = createXai
-      defaultModel = "grok-3-mini-beta"
-
-      baseURL = GROK_AI_GATEWAY_URL
-
-      // Check if the Grok gateway URL is set
-      if (baseURL == null || baseURL.trim() === "") {
-        console.error(`Error in /api/chat (${c.req.path}): GROK_AI_GATEWAY_URL must be set when using xai provider.`)
-        return new Response(JSON.stringify({ error: "GROK_AI_GATEWAY_URL must be set when using xai provider." }), {
-          status: 500,
-        })
-      }
-
-      providerOptions = {
-        xai: {
-          reasoning_effort: "high",
-        },
-      }
-      if (apiKey == null || apiKey === "") {
-        console.error(`Error in /api/chat (${c.req.path}): GROK_API_KEY is not set, but provider in request is 'xai'.`)
-        return new Response(JSON.stringify({ error: "GROK_API_KEY is not set, but provider in request is 'xai'." }), {
-          status: 500,
-        })
-      }
-    } else {
-      return new Response(JSON.stringify({ error: "Invalid AI_PROVIDER value." }), { status: 500 })
-    }
-
-    // BaseURL check - already handles null/empty baseURL from provider logic
-    if (baseURL == null || baseURL === "") {
-      console.error(`Error in /api/chat (${c.req.path}): Base URL is missing unexpectedly.`)
-      return new Response(JSON.stringify({ error: "Internal configuration error: Missing Base URL." }), { status: 500 })
-    }
-    if (apiKey == null || apiKey === "") {
-      console.error(`Error in /api/chat (${c.req.path}): API Key is missing unexpectedly.`)
-      return new Response(JSON.stringify({ error: "Internal configuration error: Missing API Key." }), { status: 500 })
+    if (!apiKey) {
+      console.error(
+        `Error in /api/chat (${c.req.path}): GEMINI_API_KEY is not set.`,
+      )
+      return new Response(
+        JSON.stringify({ error: "GEMINI_API_KEY is not set." }),
+        { status: 500 },
+      )
     }
 
     const modelName =
       typeof modelNameFromEnv === "string" && modelNameFromEnv.trim() !== "" ? modelNameFromEnv : defaultModel
 
-    const client = clientFactory({
+    const client = createGoogleGenerativeAI({
       apiKey: apiKey,
       baseURL: baseURL,
     })

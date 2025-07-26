@@ -183,7 +183,7 @@ export const isChatOpenAtom = atom(false)
 const defaultChatMessages: Array<Message> = [SYSTEM_PROMPT_MESSAGE]
 export const chatMessagesAtom = atom<Array<Message>>(defaultChatMessages)
 
-export type AiProvider = "google" | "openai" | "xai"
+export type AiProvider = "google"
 export const aiProviderAtom = atomWithStorage<AiProvider>("aiProvider", "google")
 
 // メモの一括開閉状態を管理するatom

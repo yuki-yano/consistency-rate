@@ -17,14 +17,10 @@ export const useChatSettings = (
 
   /**
    * AIプロバイダー変更ハンドラ
-   * プロバイダーが変更されたとき、Google以外のプロバイダーの場合は思考予算を0にリセット
    */
   const handleProviderChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const newProvider = event.target.value as AiProvider
     setAiProvider(newProvider)
-    if (newProvider !== "google") {
-      setThinkingBudget(0)
-    }
     setSavedHistoryKey(null)
   }
 
