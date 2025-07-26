@@ -6,8 +6,10 @@ import { useEffect } from "react";
 import { LuCalculator } from "react-icons/lu";
 
 import { calculateProbability } from "../../calc";
+import { calculateProbabilityBySimulation } from "../../calcSimulation";
 import {
   calculationResultAtom,
+  calculationSettingsAtom,
   cardsAtom,
   deckAtom,
   labelAtom,
@@ -25,17 +27,36 @@ export const SpCalcButton: FC<Props> = ({ onClick }) => {
   const pattern = useAtomValue(patternAtom);
   const pot = useAtomValue(potAtom);
   const label = useAtomValue(labelAtom);
+  const settings = useAtomValue(calculationSettingsAtom);
   const setCalculationResult = useSetAtom(calculationResultAtom);
 
   const isInvalid = pattern.patterns.some((p) =>
     p.conditions.some((c) => c.invalid)
   );
 
+  const shouldUseSimulation = () => {
+    if (pot.prosperity.count > 0) {
+      return true;
+    }
+    if (settings.mode === "simulation") {
+      return true;
+    }
+    return false;
+  };
+
+  const performCalculation = () => {
+    if (shouldUseSimulation()) {
+      return calculateProbabilityBySimulation(deck, card, pattern, pot, label, settings.simulationTrials);
+    } else {
+      return calculateProbability(deck, card, pattern, pot, label);
+    }
+  };
+
   const handleCalculate = () => {
     if (isInvalid) {
       return;
     }
-    const result = calculateProbability(deck, card, pattern, pot, label);
+    const result = performCalculation();
     setCalculationResult(result);
     onClick();
   };
@@ -46,7 +67,7 @@ export const SpCalcButton: FC<Props> = ({ onClick }) => {
       return;
     }
 
-    const result = calculateProbability(deck, card, pattern, pot, label);
+    const result = performCalculation();
     setCalculationResult(result);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // 初回のみ実行
