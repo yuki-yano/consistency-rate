@@ -65,6 +65,7 @@ export type CalculationResultState = {
   labelSuccessRates: { [label: string]: string }
   overallProbability: string
   patternSuccessRates: { [patternId: string]: string }
+  mode: "exact" | "simulation"
 }
 
 export type CalculationMode = "exact" | "simulation"
@@ -191,8 +192,10 @@ export const potAtom = atomWithHash<PotState>("pot", defaultPotState, createUrlS
 export const calculationSettingsAtom = atomWithStorage<CalculationSettings>("calculationSettings", defaultCalculationSettings)
 
 export const calculationResultAtom = atom<CalculationResultState | null>(null)
+export const previousCalculationResultAtom = atom<CalculationResultState | null>(null)
 
 export const isChatOpenAtom = atom(false)
+export const showDeltaAtom = atomWithStorage<boolean>("showDelta", false)
 
 const defaultChatMessages: Array<Message> = [SYSTEM_PROMPT_MESSAGE]
 export const chatMessagesAtom = atom<Array<Message>>(defaultChatMessages)

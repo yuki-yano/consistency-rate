@@ -224,5 +224,6 @@ export const calculateProbabilityBySimulation = (
     overallProbability: sprintf("%.2f", overallProbability),
     labelSuccessRates,
     patternSuccessRates,
+    mode: "simulation",
   }
 }

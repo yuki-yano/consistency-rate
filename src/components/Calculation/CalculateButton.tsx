@@ -1,7 +1,7 @@
 import type { FC } from "react";
 
 import { Button, HStack, Text } from "@chakra-ui/react";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useEffect } from "react";
 
 import { calculateProbability } from "../../calc";
@@ -14,6 +14,8 @@ import {
   labelAtom,
   patternAtom,
   potAtom,
+  previousCalculationResultAtom,
+  showDeltaAtom,
 } from "../../state";
 
 export const CalculateButton: FC = () => {
@@ -24,6 +26,9 @@ export const CalculateButton: FC = () => {
   const label = useAtomValue(labelAtom);
   const settings = useAtomValue(calculationSettingsAtom);
   const setCalculationResult = useSetAtom(calculationResultAtom);
+  const setPreviousCalculationResult = useSetAtom(previousCalculationResultAtom);
+  const currentResult = useAtomValue(calculationResultAtom);
+  const [showDelta, setShowDelta] = useAtom(showDeltaAtom);
 
   const shouldUseSimulation = () => {
     // Prosperityカードがある場合は自動的にシミュレーション
@@ -36,6 +41,7 @@ export const CalculateButton: FC = () => {
     }
     return false;
   };
+  const isExactActive = !shouldUseSimulation();
 
   const performCalculation = () => {
     if (shouldUseSimulation()) {
@@ -51,6 +57,10 @@ export const CalculateButton: FC = () => {
       return;
     }
     const result = performCalculation();
+    // 初回は前回結果なし。直前の結果が厳密な場合のみ前回として保持
+    if (currentResult?.mode === "exact") {
+      setPreviousCalculationResult(currentResult);
+    }
     setCalculationResult(result);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -60,6 +70,10 @@ export const CalculateButton: FC = () => {
       return;
     }
     const result = performCalculation();
+    // 直前の結果が厳密な場合のみ、前回として保存
+    if (currentResult?.mode === "exact") {
+      setPreviousCalculationResult(currentResult);
+    }
     setCalculationResult(result);
   };
 
@@ -70,9 +84,26 @@ export const CalculateButton: FC = () => {
       <Button disabled={isInvalid} onClick={handleCalculate}>
         計算{shouldUseSimulation() ? " (シミュレーション)" : " (厳密計算)"}
       </Button>
+      <Button
+        onClick={() => setShowDelta((v) => !v)}
+        size="sm"
+        aria-pressed={showDelta}
+        variant="solid"
+        isDisabled={!isExactActive}
+        colorScheme={isExactActive && showDelta ? "teal" : undefined}
+        bgColor={!isExactActive ? "gray.200" : showDelta ? "teal.500" : "gray.300"}
+        color={!isExactActive ? "gray.500" : showDelta ? "white" : "gray.700"}
+        borderWidth={!isExactActive || !showDelta ? "1px" : undefined}
+        borderColor={!isExactActive ? "gray.300" : !showDelta ? "gray.400" : undefined}
+        _hover={{ bgColor: !isExactActive ? "gray.200" : showDelta ? "teal.600" : "gray.400" }}
+        _active={{ bgColor: !isExactActive ? "gray.200" : showDelta ? "teal.700" : "gray.500" }}
+        title={!isExactActive ? "厳密計算時のみ有効" : undefined}
+      >
+        差分表示: {showDelta ? "ON" : "OFF"}
+      </Button>
       <Text as="b" color="red.400" fontSize="sm">
         {isInvalid ? "条件が不正です" : ""}
       </Text>
     </HStack>
   );
-}; 
+};

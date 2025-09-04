@@ -545,6 +545,7 @@ export const calculateProbability = (
         labelSuccessRates: {},
         overallProbability: "0.00",
         patternSuccessRates: {},
+        mode: "exact",
       }
     } else {
       console.error("エラー: 合計組み合わせ数の計算に失敗したか、ゼロまたは負の値になりました。")
@@ -570,6 +571,7 @@ export const calculateProbability = (
       labelSuccessRates: {},
       overallProbability: "0.00",
       patternSuccessRates: {},
+      mode: "exact",
     }
   }
 
@@ -635,5 +637,6 @@ export const calculateProbability = (
     labelSuccessRates: sortedLabelSuccessRates,
     overallProbability: sprintf("%.2f", overallProbability),
     patternSuccessRates: sortedPatternSuccessRates,
+    mode: "exact",
   }
 }

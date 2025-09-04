@@ -15,6 +15,7 @@ import {
   labelAtom,
   patternAtom,
   potAtom,
+  previousCalculationResultAtom,
 } from "../../state";
 
 type Props = {
@@ -29,6 +30,8 @@ export const SpCalcButton: FC<Props> = ({ onClick }) => {
   const label = useAtomValue(labelAtom);
   const settings = useAtomValue(calculationSettingsAtom);
   const setCalculationResult = useSetAtom(calculationResultAtom);
+  const setPreviousCalculationResult = useSetAtom(previousCalculationResultAtom);
+  const currentResult = useAtomValue(calculationResultAtom);
 
   const isInvalid = pattern.patterns.some((p) =>
     p.conditions.some((c) => c.invalid)
@@ -43,6 +46,7 @@ export const SpCalcButton: FC<Props> = ({ onClick }) => {
     }
     return false;
   };
+  const isExactActive = !shouldUseSimulation();
 
   const performCalculation = () => {
     if (shouldUseSimulation()) {
@@ -57,6 +61,9 @@ export const SpCalcButton: FC<Props> = ({ onClick }) => {
       return;
     }
     const result = performCalculation();
+    if (currentResult?.mode === "exact") {
+      setPreviousCalculationResult(currentResult);
+    }
     setCalculationResult(result);
     onClick();
   };
@@ -68,6 +75,9 @@ export const SpCalcButton: FC<Props> = ({ onClick }) => {
     }
 
     const result = performCalculation();
+    if (currentResult?.mode === "exact") {
+      setPreviousCalculationResult(currentResult);
+    }
     setCalculationResult(result);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // 初回のみ実行
