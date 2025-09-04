@@ -53,28 +53,46 @@ app.get("/short_url/:key{[0-9a-z]{8}}", async (c) => {
   const key = c.req.param("key")
   const storedUrlString = await c.env.KV.get(key)
 
-  if (storedUrlString == null) {
-    return c.redirect("/")
+  const buildRedirectPage = (target: string) => {
+    const isProd = import.meta.env.PROD
+    const scriptSrc = isProd ? "/static/redirectClient.js" : "/src/redirectClient.tsx"
+
+    return (
+      <html lang="ja">
+        <head>
+          <meta charSet="utf-8" />
+          <meta content="width=device-width, initial-scale=1, maximum-scale=1" name="viewport" />
+          <title>リダイレクト中…</title>
+          <script dangerouslySetInnerHTML={{ __html: `window.__REDIRECT_URL__ = ${JSON.stringify(target)};` }} />
+          <script src={scriptSrc} type="module" />
+        </head>
+        <body>
+          <div id="redirect-root" />
+        </body>
+      </html>
+    )
   }
 
   try {
+    if (storedUrlString == null) {
+      return c.html(renderToString(buildRedirectPage("/")))
+    }
+
     const requestUrl = new URL(c.req.url)
     const modeParam = requestUrl.searchParams.get("mode")
 
     const redirectUrl = new URL(storedUrlString)
+    if (modeParam != null) redirectUrl.searchParams.set("mode", modeParam)
 
-    if (modeParam != null) {
-      redirectUrl.searchParams.set("mode", modeParam)
-    }
-
-    return c.redirect(redirectUrl.toString())
+    const redirectUrlString = redirectUrl.toString()
+    return c.html(renderToString(buildRedirectPage(redirectUrlString)))
   } catch (e) {
     console.error(
       `Error in /short_url/:key{[0-9a-z]{8}} (${c.req.path}): Invalid URL stored in KV:`,
       storedUrlString,
       e,
     )
-    return c.redirect("/")
+    return c.html(renderToString(buildRedirectPage("/")))
   }
 })
 
@@ -192,11 +210,7 @@ app.get("/api/chat/history/:key{[0-9a-z]{8}}", async (c) => {
 
 app.post("/api/chat", async (c) => {
   try {
-    const {
-      GEMINI_API_KEY,
-      GEMINI_MODEL,
-      GOOGLE_AI_GATEWAY_URL,
-    } = env(c)
+    const { GEMINI_API_KEY, GEMINI_MODEL, GOOGLE_AI_GATEWAY_URL } = env(c)
 
     const {
       messages,
@@ -212,7 +226,7 @@ app.post("/api/chat", async (c) => {
     const apiKey = GEMINI_API_KEY
     const modelNameFromEnv = GEMINI_MODEL
     const defaultModel = "gemini-2.5-flash-lite"
-    
+
     const validThinkingBudget =
       typeof thinkingBudget === "number" && [0, 1024, 8192].includes(thinkingBudget) ? thinkingBudget : 0
     const providerOptions = {
@@ -222,24 +236,14 @@ app.post("/api/chat", async (c) => {
         },
       },
     }
-    
+
     if (baseURL == null) {
-      console.error(
-        `Error in /api/chat (${c.req.path}): GOOGLE_AI_GATEWAY_URL is not set.`,
-      )
-      return new Response(
-        JSON.stringify({ error: "GOOGLE_AI_GATEWAY_URL is not set." }),
-        { status: 500 },
-      )
+      console.error(`Error in /api/chat (${c.req.path}): GOOGLE_AI_GATEWAY_URL is not set.`)
+      return new Response(JSON.stringify({ error: "GOOGLE_AI_GATEWAY_URL is not set." }), { status: 500 })
     }
     if (!apiKey) {
-      console.error(
-        `Error in /api/chat (${c.req.path}): GEMINI_API_KEY is not set.`,
-      )
-      return new Response(
-        JSON.stringify({ error: "GEMINI_API_KEY is not set." }),
-        { status: 500 },
-      )
+      console.error(`Error in /api/chat (${c.req.path}): GEMINI_API_KEY is not set.`)
+      return new Response(JSON.stringify({ error: "GEMINI_API_KEY is not set." }), { status: 500 })
     }
 
     const modelName =
