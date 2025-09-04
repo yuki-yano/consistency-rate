@@ -21,7 +21,6 @@ export const SuccessRates = forwardRef<HTMLDivElement>((_, ref) => {
   const settings = useAtomValue(calculationSettingsAtom);
   const pot = useAtomValue(potAtom);
   const isExact = settings.mode !== "simulation" && pot.prosperity.count === 0;
-  const isDesktop = useBreakpointValue({ base: false, md: true }) ?? false;
 
   const toNum = (s?: string | null) => {
     if (s == null) return null;
@@ -32,7 +31,7 @@ export const SuccessRates = forwardRef<HTMLDivElement>((_, ref) => {
   // 前回が未定義、もしくは差分が実質ゼロのときは表示しない
   const renderDelta = (nowStr?: string, prevStr?: string) => {
     if (previousCalculationResult?.mode !== "exact") return null; // 前回が厳密以外なら非表示
-    if (!showDelta || !isExact || !isDesktop) return null; // 厳密計算かつPC表示のみ
+    if (!showDelta || !isExact) return null; // 厳密計算かつトグルON
     const now = toNum(nowStr);
     const prev = toNum(prevStr);
     if (now == null || prev == null) return null;
