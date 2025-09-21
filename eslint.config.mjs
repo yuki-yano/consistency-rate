@@ -52,6 +52,6 @@ export default [
     },
   },
   {
-    ignores: ["**/*.js", "**/*.mjs", "vite.config.ts"],
+    ignores: ["**/*.js", "**/*.mjs", "vite.config.ts", "docs/**", "scripts/**"],
   },
 ]
