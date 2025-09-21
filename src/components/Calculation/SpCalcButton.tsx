@@ -46,7 +46,6 @@ export const SpCalcButton: FC<Props> = ({ onClick }) => {
     }
     return false;
   };
-  const isExactActive = !shouldUseSimulation();
 
   const performCalculation = () => {
     if (shouldUseSimulation()) {

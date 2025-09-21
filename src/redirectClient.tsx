@@ -12,7 +12,7 @@ declare global {
 
 const mount = () => {
   const container = document.getElementById("redirect-root")
-  const url = window.__REDIRECT_URL__ ?? "\/"
+  const url = window.__REDIRECT_URL__ ?? "/"
 
   if (!container) return
   const root = createRoot(container)

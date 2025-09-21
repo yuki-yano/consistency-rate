@@ -607,12 +607,22 @@ export const calculateProbability = (
   const overallProbability = denominator > 0n ? Number((overallSuccessCombinations * 10000n) / denominator) / 100 : 0 // 全体の成功確率を計算
 
   const patternSuccessRates: Record<string, string> = {} // パターン成功率を計算
+  // 全てのアクティブパターンに対して初期値を設定
+  activePatterns.forEach(p => {
+    patternSuccessRates[p.uid] = "0.00"
+  })
+  // 計算結果で更新
   Object.entries(result.individualPatternSuccessCombinations).forEach(([patternId, count]: [string, bigint]) => {
     const rate = denominator > 0n ? Number((count * 10000n) / denominator) / 100 : 0
     patternSuccessRates[patternId] = sprintf("%.2f", rate)
   })
 
   const labelSuccessRates: Record<string, string> = {} // ラベル成功率を計算
+  // 全てのラベルに対して初期値を設定
+  labels.forEach(l => {
+    labelSuccessRates[l.uid] = "0.00"
+  })
+  // 計算結果で更新
   Object.entries(result.labelSuccessCombinations).forEach(([labelId, count]: [string, bigint]) => {
     const rate = denominator > 0n ? Number((count * 10000n) / denominator) / 100 : 0
     labelSuccessRates[labelId] = sprintf("%.2f", rate)

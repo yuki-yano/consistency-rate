@@ -211,11 +211,22 @@ export const calculateProbabilityBySimulation = (
   const overallProbability = (successCount / trials) * 100
 
   const labelSuccessRates: { [label: string]: string } = {}
+  // 全てのラベルに対して初期値を設定
+  labels.forEach(l => {
+    labelSuccessRates[l.uid] = "0.00"
+  })
+  // 計算結果で更新
   for (const label in labelSuccessCount) {
     labelSuccessRates[label] = sprintf("%.2f", (labelSuccessCount[label] / trials) * 100)
   }
 
   const patternSuccessRates: { [patternId: string]: string } = {}
+  // 全てのアクティブパターンに対して初期値を設定
+  const activePatterns = patterns.filter(p => p.active)
+  activePatterns.forEach(p => {
+    patternSuccessRates[p.uid] = "0.00"
+  })
+  // 計算結果で更新
   for (const patternId in patternSuccessCount) {
     patternSuccessRates[patternId] = sprintf("%.2f", (patternSuccessCount[patternId] / trials) * 100)
   }

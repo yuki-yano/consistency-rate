@@ -196,6 +196,7 @@ export const previousCalculationResultAtom = atom<CalculationResultState | null>
 
 export const isChatOpenAtom = atom(false)
 export const showDeltaAtom = atomWithStorage<boolean>("showDelta", false)
+export const showZeroPatternsAtom = atomWithStorage<boolean>("showZeroPatterns", true)
 
 const defaultChatMessages: Array<Message> = [SYSTEM_PROMPT_MESSAGE]
 export const chatMessagesAtom = atom<Array<Message>>(defaultChatMessages)

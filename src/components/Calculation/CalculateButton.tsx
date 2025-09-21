@@ -16,6 +16,7 @@ import {
   potAtom,
   previousCalculationResultAtom,
   showDeltaAtom,
+  showZeroPatternsAtom,
 } from "../../state";
 
 export const CalculateButton: FC = () => {
@@ -29,6 +30,7 @@ export const CalculateButton: FC = () => {
   const setPreviousCalculationResult = useSetAtom(previousCalculationResultAtom);
   const currentResult = useAtomValue(calculationResultAtom);
   const [showDelta, setShowDelta] = useAtom(showDeltaAtom);
+  const [showZeroPatterns, setShowZeroPatterns] = useAtom(showZeroPatternsAtom);
 
   const shouldUseSimulation = () => {
     // Prosperityカードがある場合は自動的にシミュレーション
@@ -100,6 +102,21 @@ export const CalculateButton: FC = () => {
         title={!isExactActive ? "厳密計算時のみ有効" : undefined}
       >
         差分表示: {showDelta ? "ON" : "OFF"}
+      </Button>
+      <Button
+        onClick={() => setShowZeroPatterns((v) => !v)}
+        size="sm"
+        aria-pressed={showZeroPatterns}
+        variant="solid"
+        colorScheme={showZeroPatterns ? "blue" : undefined}
+        bgColor={showZeroPatterns ? "blue.500" : "gray.300"}
+        color={showZeroPatterns ? "white" : "gray.700"}
+        borderWidth={!showZeroPatterns ? "1px" : undefined}
+        borderColor={!showZeroPatterns ? "gray.400" : undefined}
+        _hover={{ bgColor: showZeroPatterns ? "blue.600" : "gray.400" }}
+        _active={{ bgColor: showZeroPatterns ? "blue.700" : "gray.500" }}
+      >
+        0%表示: {showZeroPatterns ? "ON" : "OFF"}
       </Button>
       <Text as="b" color="red.400" fontSize="sm">
         {isInvalid ? "条件が不正です" : ""}
