@@ -2,7 +2,7 @@ import type { FC } from "react";
 
 import { Button, HStack, Text } from "@chakra-ui/react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 
 import { calculateProbability } from "../../calc";
 import { calculateProbabilityBySimulation } from "../../calcSimulation";
@@ -81,9 +81,14 @@ export const CalculateButton: FC = () => {
 
   const isInvalid = pattern.patterns.some((p) => p.conditions.some((c) => c.invalid));
 
+  const hasCardCountError = useMemo(() => {
+    const totalCards = card.cards.reduce((sum, c) => sum + c.count, 0) + pot.prosperity.count + pot.desiresOrExtravagance.count;
+    return totalCards > deck.cardCount;
+  }, [card.cards, deck.cardCount, pot.prosperity.count, pot.desiresOrExtravagance.count]);
+
   return (
     <HStack>
-      <Button disabled={isInvalid} onClick={handleCalculate}>
+      <Button disabled={isInvalid || hasCardCountError} onClick={handleCalculate}>
         計算{shouldUseSimulation() ? " (シミュレーション)" : " (厳密計算)"}
       </Button>
       <Button
@@ -119,7 +124,7 @@ export const CalculateButton: FC = () => {
         0%表示: {showZeroPatterns ? "ON" : "OFF"}
       </Button>
       <Text as="b" color="red.400" fontSize="sm">
-        {isInvalid ? "条件が不正です" : ""}
+        {isInvalid ? "条件が不正です" : hasCardCountError ? "カード枚数がデッキサイズを超えています" : ""}
       </Text>
     </HStack>
   );

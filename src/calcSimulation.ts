@@ -78,6 +78,22 @@ export const calculateProbabilityBySimulation = (
 
   // 不明なカードを追加
   const unknownCardCount = cardCount - totalDeckCards
+  if (unknownCardCount < 0) {
+    // ポット/カードの数がデッキサイズを超えている場合のエラーチェック
+    console.error("エラー: ポット/カードの数がデッキサイズを超えています。")
+    return {
+      labelSuccessRates: {},
+      overallProbability: "0.00",
+      patternSuccessRates: {},
+      mode: "simulation",
+      error: {
+        type: "card_count_exceeded",
+        deckSize: cardCount,
+        totalCards: totalDeckCards,
+        excess: Math.abs(unknownCardCount),
+      },
+    }
+  }
   if (unknownCardCount > 0) {
     const unknownCard = { name: "unknown", uid: "unknown_card" }
     for (let i = 0; i < unknownCardCount; i++) {

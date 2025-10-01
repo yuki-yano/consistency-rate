@@ -513,7 +513,18 @@ export const calculateProbability = (
   if (unknownCardCount < 0) {
     // ポット/カードの数がデッキサイズを超えている場合のエラーチェック
     console.error("エラー: ポット/カードの数がデッキサイズを超えています。")
-    return null
+    return {
+      labelSuccessRates: {},
+      overallProbability: "0.00",
+      patternSuccessRates: {},
+      mode: "exact",
+      error: {
+        type: "card_count_exceeded",
+        deckSize: cardCount,
+        totalCards: totalExplicitCards,
+        excess: Math.abs(unknownCardCount),
+      },
+    }
   }
   if (unknownCardCount > 0) {
     // 不明なカードがある場合、構成に追加

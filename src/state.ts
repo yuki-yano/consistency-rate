@@ -61,11 +61,19 @@ export type LabelState = {
   labels: Array<Label>
 }
 
+export type CalculationError = {
+  type: "card_count_exceeded"
+  deckSize: number
+  totalCards: number
+  excess: number
+}
+
 export type CalculationResultState = {
   labelSuccessRates: { [label: string]: string }
   overallProbability: string
   patternSuccessRates: { [patternId: string]: string }
   mode: "exact" | "simulation"
+  error?: CalculationError
 }
 
 export type CalculationMode = "exact" | "simulation"

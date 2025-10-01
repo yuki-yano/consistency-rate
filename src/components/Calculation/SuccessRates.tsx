@@ -1,4 +1,4 @@
-import { Card, CardBody, Heading, ListItem, Text, UnorderedList } from "@chakra-ui/react";
+import { Alert, AlertDescription, AlertIcon, AlertTitle, Card, CardBody, Heading, ListItem, Text, UnorderedList, VStack } from "@chakra-ui/react";
 import { useAtomValue } from "jotai";
 import { forwardRef } from "react";
 
@@ -60,7 +60,27 @@ export const SuccessRates = forwardRef<HTMLDivElement>((_, ref) => {
             初動・パターン成立率
           </Heading>
 
-          {calculationResult != null && (
+          {calculationResult?.error && (
+            <Alert status="error" mb={4}>
+              <AlertIcon />
+              <VStack align="start" spacing={2} flex="1">
+                <AlertTitle>計算エラー</AlertTitle>
+                <AlertDescription>
+                  指定したカードの合計枚数がデッキサイズを超えています
+                </AlertDescription>
+                <UnorderedList spacing={1} ml={4}>
+                  <ListItem>デッキサイズ: {calculationResult.error.deckSize}枚</ListItem>
+                  <ListItem>カード合計: {calculationResult.error.totalCards}枚</ListItem>
+                  <ListItem>超過分: {calculationResult.error.excess}枚</ListItem>
+                </UnorderedList>
+                <Text fontSize="sm" color="gray.600">
+                  カードの枚数を調整してください
+                </Text>
+              </VStack>
+            </Alert>
+          )}
+
+          {calculationResult != null && !calculationResult.error && (
             <UnorderedList>
               <ListItem ml={2}>
                 <Text fontSize="md">
