@@ -15,25 +15,61 @@ type Bindings = {
   KV: KVNamespace
 }
 
+
+const BASE_TITLE = "初動率計算機"
+
+const decodeNestedURIComponent = (value: string) => {
+  let current = value
+
+  for (let i = 0; i < 3; i += 1) {
+    try {
+      const decoded = decodeURIComponent(current)
+
+      if (decoded === current) {
+        break
+      }
+
+      current = decoded
+    } catch {
+      break
+    }
+  }
+
+  return current
+}
+
+const extractDeckName = (raw: string | null | undefined) => {
+  if (raw == null || raw === "") {
+    return null
+  }
+
+  const decoded = decodeNestedURIComponent(raw)
+  const trimmed = decoded.trim()
+
+  return trimmed === "" ? null : trimmed
+}
+
+const buildShareTitle = (deckName: string | null) => `${BASE_TITLE}${deckName != null ? ` - ${deckName}` : ""}`
+
 const app = new Hono<{ Bindings: Bindings }>()
 
 app.get("/", (c) => {
-  const queryDeckName = c.req.query("deckName")
-  const deckName = queryDeckName != null && queryDeckName !== "" ? ` - ${decodeURIComponent(queryDeckName)}` : ""
+  const deckName = extractDeckName(c.req.query("deckName"))
+  const pageTitle = buildShareTitle(deckName)
 
   return c.html(
     renderToString(
       <html lang="ja">
         <head>
-          <title>初動率計算機</title>
+          <title>{pageTitle}</title>
           <meta charSet="utf-8" />
           <meta content="width=device-width, initial-scale=1" name="viewport" />
           <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport" />
 
-          <meta content={`初動率計算機${deckName}`} property="og:title" />
+          <meta content={pageTitle} property="og:title" />
           <meta content="website" property="og:type" />
           <meta content="ja_JP" property="og:locale" />
-          <meta content={`初動率計算機${deckName}`} property="twitter:title" />
+          <meta content={pageTitle} property="twitter:title" />
 
           {import.meta.env.PROD ? (
             <script src="/static/client.js" type="module" />
@@ -52,10 +88,20 @@ app.get("/", (c) => {
 app.get("/short_url/:key{[0-9a-z]{8}}", async (c) => {
   const key = c.req.param("key")
   const storedUrlString = await c.env.KV.get(key)
+  const requestUrl = new URL(c.req.url)
 
-  const buildRedirectPage = (target: string) => {
+  const buildRedirectPage = (target: string, options: { deckName: string | null }) => {
     const isProd = import.meta.env.PROD
     const scriptSrc = isProd ? "/static/redirectClient.js" : "/src/redirectClient.tsx"
+    let absoluteTarget = target
+
+    try {
+      absoluteTarget = new URL(target, requestUrl.origin).toString()
+    } catch {
+      // ignore malformed target
+    }
+
+    const shareTitle = buildShareTitle(options.deckName)
 
     return (
       <html lang="ja">
@@ -63,7 +109,16 @@ app.get("/short_url/:key{[0-9a-z]{8}}", async (c) => {
           <meta charSet="utf-8" />
           <meta content="width=device-width, initial-scale=1, maximum-scale=1" name="viewport" />
           <title>リダイレクト中…</title>
-          <script dangerouslySetInnerHTML={{ __html: `window.__REDIRECT_URL__ = ${JSON.stringify(target)};` }} />
+          <meta content={shareTitle} property="og:title" />
+          <meta content="website" property="og:type" />
+          <meta content="ja_JP" property="og:locale" />
+          <meta content={absoluteTarget} property="og:url" />
+          <meta content="summary" name="twitter:card" />
+          <meta content={shareTitle} name="twitter:title" />
+          <meta content={absoluteTarget} name="twitter:url" />
+          <meta content={`0;url=${absoluteTarget}`} httpEquiv="refresh" />
+          <link href={absoluteTarget} rel="canonical" />
+          <script dangerouslySetInnerHTML={{ __html: `window.__REDIRECT_URL__ = ${JSON.stringify(absoluteTarget)};` }} />
           <script src={scriptSrc} type="module" />
         </head>
         <body>
@@ -75,24 +130,26 @@ app.get("/short_url/:key{[0-9a-z]{8}}", async (c) => {
 
   try {
     if (storedUrlString == null) {
-      return c.html(renderToString(buildRedirectPage("/")))
+      const fallbackTarget = new URL("/", requestUrl.origin).toString()
+      return c.html(renderToString(buildRedirectPage(fallbackTarget, { deckName: null })))
     }
 
-    const requestUrl = new URL(c.req.url)
     const modeParam = requestUrl.searchParams.get("mode")
 
     const redirectUrl = new URL(storedUrlString)
     if (modeParam != null) redirectUrl.searchParams.set("mode", modeParam)
 
     const redirectUrlString = redirectUrl.toString()
-    return c.html(renderToString(buildRedirectPage(redirectUrlString)))
+    const deckName = extractDeckName(redirectUrl.searchParams.get("deckName"))
+    return c.html(renderToString(buildRedirectPage(redirectUrlString, { deckName })))
   } catch (e) {
     console.error(
       `Error in /short_url/:key{[0-9a-z]{8}} (${c.req.path}): Invalid URL stored in KV:`,
       storedUrlString,
       e,
     )
-    return c.html(renderToString(buildRedirectPage("/")))
+    const fallbackTarget = new URL("/", requestUrl.origin).toString()
+    return c.html(renderToString(buildRedirectPage(fallbackTarget, { deckName: null })))
   }
 })
 
