@@ -2,8 +2,10 @@ import type { FC } from "react";
 
 import {
   Box,
+  Button,
   Container,
   Divider,
+  Flex,
   Grid,
   Heading,
   Icon,
@@ -25,9 +27,14 @@ import { Deck } from "./components/Deck/Deck";
 import { LabelManagement } from "./components/Label/LabelManagement";
 import { PatternList } from "./components/Pattern/PatternList";
 import { Pot } from "./components/Pot/Pot";
-import { calculationSettingsAtom, isChatOpenAtom, locAtom, potAtom, showDeltaAtom } from "./state";
-import { Button, Flex } from "@chakra-ui/react";
-import { useAtom } from "jotai";
+import {
+  calculationSettingsAtom,
+  isChatOpenAtom,
+  locAtom,
+  potAtom,
+  showDeltaAtom,
+  showZeroPatternsAtom,
+} from "./state";
 
 export const App: FC = () => {
   const successRatesRef = useRef<HTMLDivElement>(null);
@@ -36,6 +43,7 @@ export const App: FC = () => {
   const settings = useAtomValue(calculationSettingsAtom);
   const pot = useAtomValue(potAtom);
   const [showDelta, setShowDelta] = useAtom(showDeltaAtom);
+  const [showZeroPatterns, setShowZeroPatterns] = useAtom(showZeroPatternsAtom);
   const isAiMode = useMemo(() => loc.searchParams?.get("mode") === "ai", [loc.searchParams]);
   const isExactActive = settings.mode !== "simulation" && pot.prosperity.count === 0;
 
@@ -77,6 +85,21 @@ export const App: FC = () => {
               title={!isExactActive ? "厳密計算時のみ有効" : undefined}
             >
               差分表示: {showDelta ? "ON" : "OFF"}
+            </Button>
+            <Button
+              onClick={() => setShowZeroPatterns((v) => !v)}
+              size="sm"
+              aria-pressed={showZeroPatterns}
+              variant="solid"
+              colorScheme={showZeroPatterns ? "blue" : undefined}
+              bgColor={showZeroPatterns ? "blue.500" : "gray.300"}
+              color={showZeroPatterns ? "white" : "gray.700"}
+              borderWidth={!showZeroPatterns ? "1px" : undefined}
+              borderColor={!showZeroPatterns ? "gray.400" : undefined}
+              _hover={{ bgColor: showZeroPatterns ? "blue.600" : "gray.400" }}
+              _active={{ bgColor: showZeroPatterns ? "blue.700" : "gray.500" }}
+            >
+              0%表示: {showZeroPatterns ? "ON" : "OFF"}
             </Button>
           </Flex>
         </Show>
